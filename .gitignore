@@ -1,0 +1,4 @@
+node_modules/
+coverage/
+dist/
+/issue-runner-agent-codex-*.tgz
