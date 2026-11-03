@@ -2,7 +2,8 @@ import type { EnhancementContext } from "issue-runner-core/terminal";
 import { resolve } from "node:path";
 import { object, type NativeClient } from "../codex/client.ts";
 import { primaryCheckout } from "../codex/checkout.ts";
-import { readConfiguration, writeProjectTrust } from "../codex/config.ts";
+import { readConfiguration, upsertConfiguration } from "../codex/config.ts";
+import { trustHooks } from "./hooks.ts";
 
 function trusted(response: Record<string, unknown>, primary: string): boolean {
   const config = object(response.config);
@@ -100,19 +101,21 @@ export async function preflight(
   const { primary, worktree } = await primaryCheckout(context);
   const initial = await readConfiguration(client, context.cwd);
   const initialWarningCount = client.configurationWarnings.length;
-  if (trusted(initial, primary)) {
-    verifyWorkingTrust(initial, context.cwd, worktree);
-    verifyWarnings(client, initial, initialWarningCount);
-    return;
+  let effective = initial;
+  if (!trusted(initial, primary)) {
+    const written = await upsertConfiguration(client, "projects", {
+      [primary]: { trust_level: "trusted" },
+    });
+    if (written.status !== "ok" || written.overriddenMetadata != null)
+      throw new Error(
+        "Codex primary checkout trust write was overridden or rejected",
+      );
+    effective = await readConfiguration(client, context.cwd);
+    if (!trusted(effective, primary))
+      throw new Error("Codex primary checkout trust was not established");
   }
-  const written = await writeProjectTrust(client, primary);
-  if (written.status !== "ok" || written.overriddenMetadata != null)
-    throw new Error(
-      "Codex primary checkout trust write was overridden or rejected",
-    );
-  const effective = await readConfiguration(client, context.cwd);
-  if (!trusted(effective, primary))
-    throw new Error("Codex primary checkout trust was not established");
   verifyWorkingTrust(effective, context.cwd, worktree);
+  verifyWarnings(client, effective, initialWarningCount);
+  await trustHooks(client, context.cwd);
   verifyWarnings(client, effective, initialWarningCount);
 }

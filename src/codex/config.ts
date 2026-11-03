@@ -6,11 +6,15 @@ export async function readConfiguration(client: NativeClient, cwd: string) {
   );
 }
 
-export async function writeProjectTrust(client: NativeClient, primary: string) {
+export async function upsertConfiguration(
+  client: NativeClient,
+  keyPath: string,
+  value: Record<string, unknown>,
+) {
   return object(
     await client.request("config/value/write", {
-      keyPath: "projects",
-      value: { [primary]: { trust_level: "trusted" } },
+      keyPath,
+      value,
       mergeStrategy: "upsert",
     }),
   );

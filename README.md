@@ -46,7 +46,7 @@ Detection stops marker scheduling and waits for an issued input round to finish.
 
 `onAssignment` retains the exact path string. A different path replaces the assignment; the same string continues it. Assignments are not mapped to native turns. New bound turns, assignment replacement, disconnect, and stop invalidate stale asynchronous observations.
 
-## Establish checkout trust before startup
+## Establish checkout and hook trust before startup
 
 Await `createEnhancement` before starting Codex through the terminal. The factory resolves the task Worktree's absolute Git common directory and verifies the ordinary primary checkout containing that `.git` directory. It trusts that primary checkout, including when the supplied cwd is inside a linked Worktree. Bare repositories and separate-git-dir layouts are unsupported; no Core checkout field is required.
 
@@ -58,7 +58,11 @@ The factory retains complete configuration warnings. It retires only Codex 0.166
 
 Other initialization warnings remain fatal, including after a corrective trust write. Unknown warning formats and warnings received during writing or readback also reject the factory, as do Git failures, native configuration errors and managed write overrides.
 
-Failure releases the factory's owned connection and proxy; it preserves the shared daemon and other observers. A completed trust write remains persisted even if later verification fails. Successful trust changes are quiet and require no temporary Agent. Hook trust remains a separate requirement.
+After checkout trust succeeds, the factory lists hooks for the task cwd through `hooks/list`. It automatically trusts new and modified definitions by upserting their current hashes into `hooks.state` through `config/value/write`. It writes only `trusted_hash`, preserving enabled settings and unrelated hook state. Disabled hooks stay disabled; already-trusted and managed hooks need no write.
+
+The factory re-lists hooks before returning and verifies the same keys and hashes are trusted, including managed hooks trusted by policy. Different keys, hashes or enabled settings prevent startup. Malformed responses, native errors, warnings and policy overrides also prevent startup. No allowlist, manual approval policy or bypass flag is used.
+
+Failure releases the factory's owned connection and proxy; it preserves the shared daemon and other observers. A completed trust write remains persisted even if later verification fails. Successful trust changes are quiet and require no temporary Agent. This guarantees verified startup trust, not hook execution or dismissal of arbitrary later dialogs. Recreate the enhancement to prepare trust for definitions changed after preflight.
 
 ## Configure shared enhancement options
 
@@ -79,14 +83,14 @@ A disconnect marks observation unavailable, rejects an active readiness wait, an
 
 Await `stop()` to cancel readiness and release the owned proxy, connection, subscriptions, and timers. Repeated calls wait for the same cleanup. Stop preserves the terminal, Agent, shared daemon, native history, and persisted configuration. An already-issued Host submission remains owned by Host.
 
-The factory rejects initialization and preflight failures after cleaning partial resources. Host input failures propagate through readiness. Hook trust, unknown-ref discovery, recovery, and reconnection are separate tickets.
+The factory rejects initialization and preflight failures after cleaning partial resources. Host input failures propagate through readiness. Unknown-ref discovery, recovery, and reconnection are separate tickets.
 
 ## Implementation and verification
 
 The native boundary invokes `codex app-server daemon start` and `codex app-server proxy` with the supplied cwd/environment. Codex discovers its endpoint. The proxy carries WebSocket upgrade and framed messages, handled by `ws`; it is not treated as JSONL RPC. No private server, endpoint override, remote mode, or Agent TUI is started.
 
-Protocol references are the [0.166.0 proxy dispatch](https://github.com/openai/codex/blob/rust-v0.166.0/codex-rs/cli/src/main.rs), [native WebSocket transport](https://github.com/openai/codex/blob/rust-v0.166.0/codex-rs/app-server-transport/src/transport/unix_socket.rs), [native project-warning format](https://github.com/openai/codex/blob/rust-v0.166.0/codex-rs/app-server/src/lib.rs), and [App Server configuration APIs](https://learn.chatgpt.com/docs/app-server). Trust request and response shapes were checked against the locally generated 0.166.0 protocol schema. The initial snapshot uses the supported full-history `thread/read` response; that native API is deprecated for paginated threads and may require migration in a later native-version update.
+Protocol references are the [0.166.0 proxy dispatch](https://github.com/openai/codex/blob/rust-v0.166.0/codex-rs/cli/src/main.rs), [native WebSocket transport](https://github.com/openai/codex/blob/rust-v0.166.0/codex-rs/app-server-transport/src/transport/unix_socket.rs), [native project-warning format](https://github.com/openai/codex/blob/rust-v0.166.0/codex-rs/app-server/src/lib.rs), [native hook trust writes](https://github.com/openai/codex/blob/rust-v0.166.0/codex-rs/tui/src/hooks_rpc.rs), and [App Server configuration APIs](https://learn.chatgpt.com/docs/app-server). Trust request and response shapes were checked against the locally generated 0.166.0 protocol schema. The initial snapshot uses the supported full-history `thread/read` response; that native API is deprecated for paginated threads and may require migration in a later native-version update.
 
-Tests exercise the public factory through a bound Host, controlled time, and a scripted native byte bridge. Trust tests verify factory ordering, structured writes, policy and warning rejection, repeated creation and partial cleanup. Git discovery also runs against temporary ordinary and linked checkouts. The package test builds and installs the tarball with the supplied Core contract, compiles a consumer, and checks runtime exports. Installation prefers cached dependencies and fetches missing registry data when needed. CI already targets Ubuntu and Windows; implementation and fixtures use portable Node APIs.
+Tests exercise the public factory through a bound Host, controlled time, and a scripted native byte bridge. Trust tests verify factory ordering, structured writes, current hook hashes, managed and disabled definitions, policy and warning rejection, mismatched readback, repeated creation and partial cleanup. Git discovery also runs against temporary ordinary and linked checkouts. The package test builds and installs the tarball with the supplied Core contract, compiles a consumer, and checks runtime exports. Installation prefers cached dependencies and fetches missing registry data when needed. CI already targets Ubuntu and Windows; implementation and fixtures use portable Node APIs.
 
-See [code architecture](docs/code-architecture.md), [ticket #2](https://github.com/BuddyLabsCo/issue-runner-agent-codex/issues/2), and [ticket #3](https://github.com/BuddyLabsCo/issue-runner-agent-codex/issues/3) for ownership and scope.
+See [code architecture](docs/code-architecture.md), [ticket #2](https://github.com/BuddyLabsCo/issue-runner-agent-codex/issues/2), [ticket #3](https://github.com/BuddyLabsCo/issue-runner-agent-codex/issues/3), and [ticket #4](https://github.com/BuddyLabsCo/issue-runner-agent-codex/issues/4) for ownership and scope.

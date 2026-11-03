@@ -67,6 +67,8 @@ await test("observes only the supplied conversation and accepts a failed concate
       "initialize",
       "initialized",
       "config/read",
+      "hooks/list",
+      "hooks/list",
       "thread/resume",
       "thread/read",
     ],
