@@ -1,5 +1,5 @@
 import { NativeClient, object, type Notification } from "../codex/client.ts";
-import { disconnected } from "../diagnostics.ts";
+import { diagnostic } from "../diagnostics.ts";
 
 export interface NativeTurn {
   id: string;
@@ -66,7 +66,7 @@ export class Observation {
       this.initialized = false;
       this.willRetry = undefined;
       this.invalidate();
-      disconnected(this.sessionref);
+      diagnostic(this.sessionref, "observation disconnected");
     };
     client.notifications.add(this.notification);
     client.disconnections.add(this.connectionLost);

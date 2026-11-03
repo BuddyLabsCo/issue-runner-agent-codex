@@ -8,12 +8,14 @@ import { connectNative, type NativeClient } from "./codex/client.ts";
 import { parseOptions, type Options } from "./config.ts";
 import { Observation } from "./monitor/state.ts";
 import { Readiness } from "./session/ready.ts";
+import { ErrorRecovery } from "./recovery/error.ts";
 import { preflight } from "./preflight/trust.ts";
 
 function assemble(
   host: EnhancementHost,
   client: NativeClient,
   options: Options,
+  cwd: string,
 ): Enhancement {
   const observation = new Observation(client);
   const readiness = new Readiness(
@@ -23,10 +25,12 @@ function assemble(
     randomUUID(),
     options.readyTimeout,
   );
+  const recovery = new ErrorRecovery(host, observation, options, cwd);
   let stopped = false;
   let stopping: Promise<void> | undefined;
   const active = () => {
     if (stopped) throw new Error("Codex enhancement stopped");
+    recovery.check();
   };
   return {
     async startMonitoring(sessionref) {
@@ -48,9 +52,10 @@ function assemble(
     stop() {
       if (stopping) return stopping;
       stopped = true;
+      recovery.stop();
       readiness.stop();
       observation.stop();
-      stopping = client.close();
+      stopping = client.close().then(() => recovery.finish());
       return stopping;
     },
   };
@@ -65,7 +70,7 @@ export async function createEnhancement(
   const client = await connectNative(context);
   try {
     await preflight(client, context);
-    return assemble(host, client, options);
+    return assemble(host, client, options, context.cwd);
   } catch (error) {
     await client.close();
     throw error;
