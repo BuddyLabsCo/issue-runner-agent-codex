@@ -14,7 +14,7 @@ export interface ThreadState {
   turns: NativeTurn[];
 }
 
-function threadState(value: unknown, ref: string): ThreadState {
+export function threadState(value: unknown, ref: string): ThreadState {
   const thread = object(object(value).thread);
   if (thread.id !== ref || !Array.isArray(thread.turns))
     throw new Error("Invalid Codex thread response");
@@ -37,24 +37,12 @@ function threadState(value: unknown, ref: string): ThreadState {
   return { id: ref, status: object(thread.status), turns };
 }
 
-function containsMarker(
-  items: Record<string, unknown>[],
-  guid: string,
-): boolean {
-  return items.some(
-    (item) =>
-      item.type === "commandExecution" &&
-      item.source === "userShell" &&
-      typeof item.command === "string" &&
-      item.command.includes(guid),
-  );
-}
-
 export class Observation {
   readonly changes = new Set<() => void>();
   sessionref: string | undefined;
   thread: ThreadState | undefined;
   available = true;
+  initialized = false;
   willRetry: boolean | undefined;
   expectedFile: string | undefined;
   assignmentVersion = 0;
@@ -62,7 +50,6 @@ export class Observation {
   private snapshotVersion = 0;
   private latestStatus: Record<string, unknown> | undefined;
   private binding: Promise<void> | undefined;
-  private discovery: Promise<void> | undefined;
   private stopped = false;
   private readonly notification;
   private readonly connectionLost;
@@ -76,6 +63,7 @@ export class Observation {
       this.observe(notification);
     this.connectionLost = () => {
       this.available = false;
+      this.initialized = false;
       this.willRetry = undefined;
       this.invalidate();
       disconnected(this.sessionref);
@@ -97,7 +85,10 @@ export class Observation {
     this.invalidate();
   }
 
-  async bind(ref: string): Promise<void> {
+  async bind(
+    ref: string,
+    items: Record<string, unknown>[] = [],
+  ): Promise<void> {
     if (this.sessionref !== undefined && this.sessionref !== ref)
       throw new Error("Codex session is already bound");
     if (this.binding) return this.binding;
@@ -105,7 +96,15 @@ export class Observation {
     // Native resume attaches this connection's listener without sending a business turn.
     this.binding = this.client
       .request("thread/resume", { threadId: ref, excludeTurns: true })
-      .then(() => this.refresh());
+      .then(() => this.refresh())
+      .then(() => {
+        if (this.stopped || !this.available) return;
+        this.initialized = true;
+        this.invalidate(false);
+      });
+    // Publish evidence before initialization finishes so readiness stops new input.
+    this.markerItems.push(...items);
+    this.invalidate(false);
     try {
       await this.binding;
     } catch (error) {
@@ -114,10 +113,9 @@ export class Observation {
     }
   }
 
-  async refresh(guid?: string): Promise<void> {
+  async refresh(): Promise<void> {
     const ref = this.sessionref;
-    if (this.stopped || !this.available) return;
-    if (!ref) return guid ? this.discover(guid) : undefined;
+    if (!ref || this.stopped || !this.available) return;
     const version = this.snapshotVersion;
     const status = this.latestStatus;
     const result = threadState(
@@ -137,72 +135,11 @@ export class Observation {
     for (const listener of this.changes) listener();
   }
 
-  hasMarker(guid: string): boolean {
-    return containsMarker(
-      [
-        ...this.markerItems,
-        ...(this.thread?.turns.flatMap((turn) => turn.items) ?? []),
-      ],
-      guid,
-    );
-  }
-
-  private discover(guid: string): Promise<void> {
-    const version = this.version;
-    this.discovery ??= this.scanLoaded(guid).finally(() => {
-      this.discovery = undefined;
-      // Recheck events received while the loaded-thread snapshot was in flight.
-      if (version !== this.version && !this.sessionref)
-        for (const listener of this.changes) listener();
-    });
-    return this.discovery;
-  }
-
-  private async scanLoaded(guid: string): Promise<void> {
-    let cursor: string | undefined;
-    const cursors = new Set<string>();
-    do {
-      const page = object(
-        await this.client.request(
-          "thread/loaded/list",
-          cursor ? { cursor } : {},
-        ),
-      );
-      if (this.stopped || !this.available || this.sessionref) return;
-      if (
-        !Array.isArray(page.data) ||
-        page.data.some((ref: unknown) => typeof ref !== "string" || !ref.trim())
-      )
-        throw new Error("Invalid Codex loaded threads response");
-      for (const ref of page.data as string[]) {
-        const snapshot = threadState(
-          await this.client.request("thread/read", {
-            threadId: ref,
-            includeTurns: true,
-          }),
-          ref,
-        );
-        if (this.stopped || !this.available || this.sessionref) return;
-        const items = snapshot.turns.flatMap((turn) => turn.items);
-        if (!containsMarker(items, guid)) continue;
-        await this.bind(ref);
-        if (this.stopped || !this.available) return;
-        this.markerItems.push(...items);
-        for (const listener of this.changes) listener();
-        return;
-      }
-      if (
-        page.nextCursor !== undefined &&
-        page.nextCursor !== null &&
-        (typeof page.nextCursor !== "string" ||
-          !page.nextCursor ||
-          cursors.has(page.nextCursor))
-      )
-        throw new Error("Invalid Codex loaded threads cursor");
-      cursor =
-        typeof page.nextCursor === "string" ? page.nextCursor : undefined;
-      if (cursor) cursors.add(cursor);
-    } while (cursor);
+  get items(): Record<string, unknown>[] {
+    return [
+      ...this.markerItems,
+      ...(this.thread?.turns.flatMap((turn) => turn.items) ?? []),
+    ];
   }
 
   private observe({ method, params }: Notification): void {
@@ -277,6 +214,7 @@ export class Observation {
   stop(): void {
     this.stopped = true;
     this.available = false;
+    this.initialized = false;
     this.invalidate();
     this.client.notifications.delete(this.notification);
     this.client.disconnections.delete(this.connectionLost);

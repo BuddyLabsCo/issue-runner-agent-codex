@@ -44,7 +44,9 @@ For a new conversation, omit the ref: `await enhancement.startMonitoring()`. Dur
 
 Each readiness wait submits `!` followed by the instance's GUID through `host.submitText`, then repeats after two seconds when the previous round has finished. Host retains its configured submit key. A userShell command containing the GUID proves readiness, including failed, nonzero, concatenated, or multiline commands. Model output does not prove readiness.
 
-Detection stops marker scheduling and waits for an issued input round to finish. Each wait has its own deadline. Timeout rejects without claiming readiness. Retry `waitUntilReady()` on the same instance: it retains its GUID, any discovered ref, and observation, and does not replay the Agent command. Overlapping waits share input rounds and retain separate deadlines.
+Detection stops marker scheduling immediately. Readiness waits for the subscription, initial current-state read, and any issued input round to finish. Binding failures reject readiness.
+
+Each wait has its own deadline. Timeout rejects without claiming readiness. Retry `waitUntilReady()` on the same instance: it retains its GUID, any discovered ref, and observation, and does not replay the Agent command. Overlapping waits share input rounds and retain separate deadlines.
 
 `onAssignment` retains the exact path string. A different path replaces the assignment; the same string continues it. Assignments are not mapped to native turns. New bound turns, assignment replacement, disconnect, and stop invalidate stale asynchronous observations.
 

@@ -1,23 +1,41 @@
 import type { EnhancementHost } from "issue-runner-core/terminal";
-import type { Observation } from "../monitor/state.ts";
+import { Observation, threadState } from "../monitor/state.ts";
+import { NativeClient, object } from "../codex/client.ts";
+
+function containsMarker(
+  items: Record<string, unknown>[],
+  guid: string,
+): boolean {
+  return items.some(
+    (item) =>
+      item.type === "commandExecution" &&
+      item.source === "userShell" &&
+      typeof item.command === "string" &&
+      item.command.includes(guid),
+  );
+}
 
 export class Readiness {
   private round: Promise<void> | undefined;
+  private discovery: Promise<void> | undefined;
   private readonly cancellations = new Set<() => void>();
   private nextRoundAt = 0;
 
   private readonly host: EnhancementHost;
+  private readonly client: NativeClient;
   private readonly observation: Observation;
   private readonly guid: string;
   private readonly timeout: number;
 
   constructor(
     host: EnhancementHost,
+    client: NativeClient,
     observation: Observation,
     guid: string,
     timeout: number,
   ) {
     this.host = host;
+    this.client = client;
     this.observation = observation;
     this.guid = guid;
     this.timeout = timeout;
@@ -52,13 +70,13 @@ export class Readiness {
           return;
         }
         if (!this.observation.sessionref) {
-          void this.observation.refresh(this.guid).catch(finish);
+          void this.discover().catch(finish);
           return;
         }
-        if (this.observation.hasMarker(this.guid)) {
+        if (containsMarker(this.observation.items, this.guid)) {
           detected = true;
           clearTimeout(next);
-          if (!this.round) finish();
+          if (this.observation.initialized && !this.round) finish();
         }
       };
       const submit = () => {
@@ -112,6 +130,71 @@ export class Readiness {
       changed();
       if (!settled) submit();
     });
+  }
+
+  private discover(): Promise<void> {
+    const version = this.observation.version;
+    this.discovery ??= this.scanLoaded().finally(() => {
+      this.discovery = undefined;
+      // Recheck events received while the loaded-thread snapshot was in flight.
+      if (version !== this.observation.version && !this.observation.sessionref)
+        for (const listener of this.observation.changes) listener();
+    });
+    return this.discovery;
+  }
+
+  private async scanLoaded(): Promise<void> {
+    let cursor: string | undefined;
+    const cursors = new Set<string>();
+    do {
+      const page = object(
+        await this.client.request(
+          "thread/loaded/list",
+          cursor ? { cursor } : {},
+        ),
+      );
+      if (
+        this.cancellations.size === 0 ||
+        !this.observation.available ||
+        this.observation.sessionref
+      )
+        return;
+      if (
+        !Array.isArray(page.data) ||
+        page.data.some((ref: unknown) => typeof ref !== "string" || !ref.trim())
+      )
+        throw new Error("Invalid Codex loaded threads response");
+      for (const ref of page.data as string[]) {
+        const snapshot = threadState(
+          await this.client.request("thread/read", {
+            threadId: ref,
+            includeTurns: true,
+          }),
+          ref,
+        );
+        if (
+          this.cancellations.size === 0 ||
+          !this.observation.available ||
+          this.observation.sessionref
+        )
+          return;
+        const items = snapshot.turns.flatMap((turn) => turn.items);
+        if (!containsMarker(items, this.guid)) continue;
+        await this.observation.bind(ref, items);
+        return;
+      }
+      if (
+        page.nextCursor !== undefined &&
+        page.nextCursor !== null &&
+        (typeof page.nextCursor !== "string" ||
+          !page.nextCursor ||
+          cursors.has(page.nextCursor))
+      )
+        throw new Error("Invalid Codex loaded threads cursor");
+      cursor =
+        typeof page.nextCursor === "string" ? page.nextCursor : undefined;
+      if (cursor) cursors.add(cursor);
+    } while (cursor);
   }
 
   stop(): void {
