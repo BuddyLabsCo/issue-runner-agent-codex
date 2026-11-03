@@ -8,6 +8,7 @@ import { connectNative, type NativeClient } from "./codex/client.ts";
 import { parseOptions, type Options } from "./config.ts";
 import { Observation } from "./monitor/state.ts";
 import { Readiness } from "./session/ready.ts";
+import { preflight } from "./preflight/trust.ts";
 
 function assemble(
   host: EnhancementHost,
@@ -62,6 +63,7 @@ export async function createEnhancement(
   const options = parseOptions(config);
   const client = await connectNative(context);
   try {
+    await preflight(client, context);
     return assemble(host, client, options);
   } catch (error) {
     await client.close();

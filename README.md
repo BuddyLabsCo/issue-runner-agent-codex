@@ -4,7 +4,7 @@ Optional, terminal-independent observation and readiness for an exact Codex conv
 
 ## Install a development candidate
 
-Use Node.js 22.18.0 and npm 11. Install native Codex separately and make `codex` available on the supplied environment's executable search path. This candidate targets Codex CLI/app-server **0.166.0**. Its version, CLI help, generated protocol, and shared-daemon initialization were checked locally. Full native conversation readiness, other native versions, and Windows execution have not been checked; the lifecycle tests use scripted native responses.
+Use Node.js 22.18.0 and npm 11. Install Git and native Codex separately; make `git` and `codex` available on the supplied environment's executable search path. This candidate targets Codex CLI/app-server **0.166.0**. Its version, CLI help, generated protocol, and shared-daemon initialization were checked locally. Full native trust/readiness integration, other native versions, and Windows execution have not been checked; the lifecycle tests use scripted native responses.
 
 Build and pack from this checkout:
 
@@ -46,6 +46,14 @@ Detection stops marker scheduling and waits for an issued input round to finish.
 
 `onAssignment` retains the exact path string. A different path replaces the assignment; the same string continues it. Assignments are not mapped to native turns. New bound turns, assignment replacement, disconnect, and stop invalidate stale asynchronous observations.
 
+## Establish checkout trust before startup
+
+Await `createEnhancement` before starting Codex through the terminal. The factory resolves the task Worktree's absolute Git common directory and verifies the ordinary primary checkout containing that `.git` directory. It trusts that primary checkout, including when the supplied cwd is inside a linked Worktree. Bare repositories and separate-git-dir layouts are unsupported; no Core checkout field is required.
+
+The factory reads effective native configuration for the supplied cwd. If the primary checkout is not already trusted, it writes a structured project entry through `config/value/write` with upsert, then reads effective configuration again. Native Codex serializes path keys, including spaces, quotes, dots and backslashes. Other project entries, project fields and unrelated settings are preserved. Repeated creation leaves existing effective trust unchanged.
+
+Git failures, native configuration errors, configuration warnings, managed write overrides and ineffective readback reject the awaited factory. Configuration warnings received during initialization also prevent trust verification. Failure releases the factory's owned connection and proxy; it preserves the shared daemon and other observers. A completed trust write remains persisted even if later verification fails. Successful trust changes are quiet and require no temporary Agent. Hook trust remains a separate requirement.
+
 ## Configure shared enhancement options
 
 Pass the whole shared enhancements options object. Unknown keys are left to their owners; no Agent namespace is required. These options use seconds:
@@ -65,14 +73,14 @@ A disconnect marks observation unavailable, rejects an active readiness wait, an
 
 Await `stop()` to cancel readiness and release the owned proxy, connection, subscriptions, and timers. Repeated calls wait for the same cleanup. Stop preserves the terminal, Agent, shared daemon, native history, and persisted configuration. An already-issued Host submission remains owned by Host.
 
-The factory rejects initialization failures after cleaning partial resources. Host input failures propagate through readiness. This slice assumes checkout and hook trust are already established; preflight, unknown-ref discovery, recovery, and reconnection are separate tickets.
+The factory rejects initialization and preflight failures after cleaning partial resources. Host input failures propagate through readiness. Hook trust, unknown-ref discovery, recovery, and reconnection are separate tickets.
 
 ## Implementation and verification
 
 The native boundary invokes `codex app-server daemon start` and `codex app-server proxy` with the supplied cwd/environment. Codex discovers its endpoint. The proxy carries WebSocket upgrade and framed messages, handled by `ws`; it is not treated as JSONL RPC. No private server, endpoint override, remote mode, or Agent TUI is started.
 
-Protocol references are the [0.166.0 proxy dispatch](https://github.com/openai/codex/blob/rust-v0.166.0/codex-rs/cli/src/main.rs) and [native WebSocket transport](https://github.com/openai/codex/blob/rust-v0.166.0/codex-rs/app-server-transport/src/transport/unix_socket.rs). The initial snapshot uses the supported full-history `thread/read` response; that native API is deprecated for paginated threads and may require migration in a later native-version update.
+Protocol references are the [0.166.0 proxy dispatch](https://github.com/openai/codex/blob/rust-v0.166.0/codex-rs/cli/src/main.rs), [native WebSocket transport](https://github.com/openai/codex/blob/rust-v0.166.0/codex-rs/app-server-transport/src/transport/unix_socket.rs), and [App Server configuration APIs](https://learn.chatgpt.com/docs/app-server). Trust request and response shapes were checked against the locally generated 0.166.0 protocol schema. The initial snapshot uses the supported full-history `thread/read` response; that native API is deprecated for paginated threads and may require migration in a later native-version update.
 
-Tests exercise the public factory through a bound Host, controlled time, and a scripted native byte bridge. The package test builds and installs the tarball with the supplied Core contract, compiles a consumer, and checks runtime exports. Installation prefers cached dependencies and fetches missing registry data when needed. CI already targets Ubuntu and Windows; implementation and fixtures use portable Node APIs.
+Tests exercise the public factory through a bound Host, controlled time, and a scripted native byte bridge. Trust tests verify factory ordering, structured writes, policy and warning rejection, repeated creation and partial cleanup. Git discovery also runs against temporary ordinary and linked checkouts. The package test builds and installs the tarball with the supplied Core contract, compiles a consumer, and checks runtime exports. Installation prefers cached dependencies and fetches missing registry data when needed. CI already targets Ubuntu and Windows; implementation and fixtures use portable Node APIs.
 
-See [code architecture](docs/code-architecture.md) and [ticket #2](https://github.com/BuddyLabsCo/issue-runner-agent-codex/issues/2) for ownership and scope.
+See [code architecture](docs/code-architecture.md), [ticket #2](https://github.com/BuddyLabsCo/issue-runner-agent-codex/issues/2), and [ticket #3](https://github.com/BuddyLabsCo/issue-runner-agent-codex/issues/3) for ownership and scope.

@@ -63,7 +63,13 @@ await test("observes only the supplied conversation and accepts a failed concate
   );
   assert.deepEqual(
     native.requests.map(({ method }) => method),
-    ["initialize", "initialized", "thread/resume", "thread/read"],
+    [
+      "initialize",
+      "initialized",
+      "config/read",
+      "thread/resume",
+      "thread/read",
+    ],
   );
   await instance.stop();
 });
