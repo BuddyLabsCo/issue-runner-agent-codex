@@ -1,6 +1,6 @@
 # issue-runner-agent-codex
 
-Optional observation, readiness, and bounded error recovery for an exact Codex conversation, through Core's Enhancement contract v1. The terminal plugin starts or resumes interactive Codex. This package connects to the shared daemon and proves readiness through native userShell records.
+Optional observation, readiness, and bounded recovery for an exact Codex conversation, through Core's Enhancement contract v1. The terminal plugin starts or resumes interactive Codex. This package connects to the shared daemon and proves readiness through native userShell records.
 
 ## Install a development candidate
 
@@ -79,7 +79,7 @@ Pass the whole shared enhancements options object. Unknown keys are left to thei
 | `retryDelay` | `[10, 20, 40]` | Nonempty list of finite, nonnegative numbers |
 | `handoffRecoveryDelaySeconds` | `120` | Finite, nonnegative number |
 
-`retryLimit` bounds actual error-recovery submissions; `0` disables them. Error recovery waits `retryDelay` seconds before each submission, reusing the last entry for additional attempts. Cancelled waits consume no attempt or delay entry. There is no total recovery window. `handoffRecoveryDelaySeconds` is validated for the separate missing-handoff recovery ticket.
+`retryLimit` bounds actual submissions independently for errors and missing handoffs; `0` disables both. Error recovery waits `retryDelay` seconds before each submission, reusing the last entry for additional attempts. Missing-handoff recovery waits `handoffRecoveryDelaySeconds` before every submission. Cancelled waits consume no attempt or delay entry. There is no total recovery window.
 
 ## Recover final turn errors
 
@@ -89,11 +89,23 @@ The native machine classifications `sessionBudgetExceeded`, `usageLimitExceeded`
 
 Before sending input, recovery waits its configured delay, refreshes the current native state, and checks the current expected file. A present file suppresses submission; Core still owns handoff validation. A new bound turn, assignment replacement, loss of eligibility, disconnect, or stop cancels the pending wait. Later eligible endings start a fresh wait.
 
-A different expected-file path resets the error budget and delay position. Same-path continuation and repeated observation refreshes preserve them. A later completed or interrupted turn resets them whether or not its handoff exists. Completed and interrupted turns do not trigger recovery in this candidate; missing-handoff recovery and reconnection remain separate tickets.
+A different expected-file path resets the error budget and delay position. Same-path continuation and repeated observation refreshes preserve them. A later completed or interrupted turn resets them whether or not its handoff exists, then evaluates missing-handoff recovery independently.
 
 Each actual submission calls only argument-free `host.requestRecovery()`. The Host retains Core's recovery wording and its terminal submit key. The enhancement never replays task text or submits a business turn through RPC. Excluded errors and exhaustion appear on inherited Runner stderr; each submission prints `[codex] sessionref=<ref> recovery=error attempt=<attempt>/<limit>`. Scheduling, cancellation, and native retry activity remain quiet.
 
 The final state/file check and terminal input are not atomic. A new turn or file can appear after the final check and before Host input reaches Codex. The enhancement cannot eliminate that residual race.
+
+## Recover missing handoffs and respect human action
+
+With a current assignment, a completed or interrupted latest turn qualifies only when the bound thread is idle and the expected file is absent. A turn ending alone does not prove inactivity. Failed turns use only the error category.
+
+Every missing-handoff attempt waits 120 seconds by default, including the first attempt. Its independent budget defaults to three actual Host submissions. Completed or interrupted turns without the file preserve this budget. File appearance resets it and stops pending missing-file recovery; a different assignment path resets both budgets. Same-path continuation and refreshed observations preserve attempts.
+
+The shared recovery path refreshes native state and checks the expected file immediately before input. New bound turns, changed assignments, loss of eligibility, disconnect and stop cancel stale work without consuming attempts. Exhaustion is reported while observation continues. Each actual submission prints `[codex] sessionref=<ref> recovery=missing-handoff attempt=<attempt>/<limit>` to inherited Runner stderr.
+
+The complete latest final assistant reply controls human-action suppression, including replies loaded from current snapshots. Literal `[action required]` after leading whitespace cancels pending missing-handoff recovery and consumes no attempt. Commentary, partial answers and markers elsewhere in the reply do not request this pause. A match prints exactly `[codex] sessionref=<ref> ACTION REQUIRED!!!`. Observation continues, and later turns use their own output.
+
+File presence establishes only that the expected path exists. Core still validates handoff contents, task completion and Git acceptance. The enhancement does not create handoffs, replay tasks or assert an assignment-to-native-turn mapping. Reconnection remains a separate ticket; refreshed snapshots already use the same recovery policy.
 
 ## Stop and diagnose observation
 
@@ -115,4 +127,6 @@ Discovery tests cover multiple loaded threads and pages, same-cwd Tabs, nonmatch
 
 Recovery tests cover classifications, inactive system errors, native retry suppression, actual-submission accounting, delay reuse and exhaustion, reset/preservation, final state/file rechecks, cancellation during reads, and Host failure propagation. Their primary seam is the public lifecycle with controlled time and scripted native/file boundaries. Error and status shapes were checked against the locally generated Codex 0.166.0 schema. Real joint integration and publication remain outside this ticket.
 
-See [code architecture](docs/code-architecture.md), [ticket #2](https://github.com/BuddyLabsCo/issue-runner-agent-codex/issues/2), [ticket #3](https://github.com/BuddyLabsCo/issue-runner-agent-codex/issues/3), [ticket #4](https://github.com/BuddyLabsCo/issue-runner-agent-codex/issues/4), [ticket #5](https://github.com/BuddyLabsCo/issue-runner-agent-codex/issues/5), and [ticket #6](https://github.com/BuddyLabsCo/issue-runner-agent-codex/issues/6) for ownership and scope.
+Missing-handoff tests extend that seam with every-attempt delays, independent budgets, file and assignment resets, final-read changes, cancellations, complete final replies, literal marker matching and later-turn reevaluation. Final assistant message and phase shapes were checked against the locally generated Codex 0.166.0 protocol.
+
+See [code architecture](docs/code-architecture.md), [ticket #2](https://github.com/BuddyLabsCo/issue-runner-agent-codex/issues/2), [ticket #3](https://github.com/BuddyLabsCo/issue-runner-agent-codex/issues/3), [ticket #4](https://github.com/BuddyLabsCo/issue-runner-agent-codex/issues/4), [ticket #5](https://github.com/BuddyLabsCo/issue-runner-agent-codex/issues/5), [ticket #6](https://github.com/BuddyLabsCo/issue-runner-agent-codex/issues/6), and [ticket #7](https://github.com/BuddyLabsCo/issue-runner-agent-codex/issues/7) for ownership and scope.
