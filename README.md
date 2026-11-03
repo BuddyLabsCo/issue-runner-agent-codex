@@ -1,6 +1,6 @@
 # issue-runner-agent-codex
 
-Optional, terminal-independent observation and readiness for an exact Codex conversation, through Core's Enhancement contract v1. The terminal plugin starts or resumes interactive Codex. This package connects to the shared daemon and proves readiness through native userShell records.
+Optional observation, readiness, and bounded error recovery for an exact Codex conversation, through Core's Enhancement contract v1. The terminal plugin starts or resumes interactive Codex. This package connects to the shared daemon and proves readiness through native userShell records.
 
 ## Install a development candidate
 
@@ -79,15 +79,29 @@ Pass the whole shared enhancements options object. Unknown keys are left to thei
 | `retryDelay` | `[10, 20, 40]` | Nonempty list of finite, nonnegative numbers |
 | `handoffRecoveryDelaySeconds` | `120` | Finite, nonnegative number |
 
-The recovery options are validated and defaulted for later recovery slices. This candidate sends no business recovery input and has no total recovery window.
+`retryLimit` bounds actual error-recovery submissions; `0` disables them. Error recovery waits `retryDelay` seconds before each submission, reusing the last entry for additional attempts. Cancelled waits consume no attempt or delay entry. There is no total recovery window. `handoffRecoveryDelaySeconds` is validated for the separate missing-handoff recovery ticket.
+
+## Recover final turn errors
+
+With a current assignment, the enhancement recovers a latest failed turn only when its bound conversation is inactive (`idle` or `systemError`). Active turns, active conversations, native retries, and unavailable observations receive no recovery input. Missing historical `willRetry` evidence does not establish inactivity.
+
+The native machine classifications `sessionBudgetExceeded`, `usageLimitExceeded`, `unauthorized`, `modelNotFound`, `contextWindowExceeded`, `cyberPolicy`, and `misalignmentPolicyViolation` are reported without automatic recovery, even alongside HTTP 429. Every remaining final turn error, including unknown or unclassified errors, uses the bounded error budget. Observation, transport, and local readiness failures do not count as failed business turns.
+
+Before sending input, recovery waits its configured delay, refreshes the current native state, and checks the current expected file. A present file suppresses submission; Core still owns handoff validation. A new bound turn, assignment replacement, loss of eligibility, disconnect, or stop cancels the pending wait. Later eligible endings start a fresh wait.
+
+A different expected-file path resets the error budget and delay position. Same-path continuation and repeated observation refreshes preserve them. A later completed or interrupted turn resets them whether or not its handoff exists. Completed and interrupted turns do not trigger recovery in this candidate; missing-handoff recovery and reconnection remain separate tickets.
+
+Each actual submission calls only argument-free `host.requestRecovery()`. The Host retains Core's recovery wording and its terminal submit key. The enhancement never replays task text or submits a business turn through RPC. Excluded errors and exhaustion appear on inherited Runner stderr; each submission prints `[codex] sessionref=<ref> recovery=error attempt=<attempt>/<limit>`. Scheduling, cancellation, and native retry activity remain quiet.
+
+The final state/file check and terminal input are not atomic. A new turn or file can appear after the final check and before Host input reaches Codex. The enhancement cannot eliminate that residual race.
 
 ## Stop and diagnose observation
 
 A disconnect marks observation unavailable, rejects an active readiness wait, and prints a redacted notice to inherited Runner stderr. Binding, readiness, and native retries remain quiet. This slice schedules no reconnection.
 
-Await `stop()` to cancel readiness and release the owned proxy, connection, subscriptions, and timers. Repeated calls wait for the same cleanup. Stop preserves the terminal, Agent, shared daemon, native history, and persisted configuration. An already-issued Host submission remains owned by Host.
+Await `stop()` to cancel readiness and pending recovery and release the owned proxy, connection, subscriptions, and timers. Repeated calls wait for the same cleanup. Stop preserves the terminal, Agent, shared daemon, native history, and persisted configuration. Stop waits for an already-issued recovery request to settle; the Host owns that submission.
 
-The factory rejects initialization and preflight failures after cleaning partial resources. Host input and native discovery failures propagate through readiness. Recovery and reconnection are separate tickets.
+The factory rejects initialization and preflight failures after cleaning partial resources. Host input and native discovery failures propagate through readiness. Asynchronous recovery Host or final-read failures propagate unchanged through the next lifecycle call. Awaited `stop()` releases resources before propagating those failures. They do not consume additional retries or gain special acknowledgement handling.
 
 ## Implementation and verification
 
@@ -99,4 +113,6 @@ Tests exercise the public factory through a bound Host, controlled time, and a s
 
 Discovery tests cover multiple loaded threads and pages, same-cwd Tabs, nonmatching evidence, delayed loading, failed multiline commands, pending Host input, timeout/retry, notification races, invalid pages, and stop during discovery. Loaded-thread request and response shapes were checked against the locally generated Codex 0.166.0 protocol schema. Joint integration acceptance and registry publication remain outside this ticket.
 
-See [code architecture](docs/code-architecture.md), [ticket #2](https://github.com/BuddyLabsCo/issue-runner-agent-codex/issues/2), [ticket #3](https://github.com/BuddyLabsCo/issue-runner-agent-codex/issues/3), [ticket #4](https://github.com/BuddyLabsCo/issue-runner-agent-codex/issues/4), and [ticket #5](https://github.com/BuddyLabsCo/issue-runner-agent-codex/issues/5) for ownership and scope.
+Recovery tests cover classifications, inactive system errors, native retry suppression, actual-submission accounting, delay reuse and exhaustion, reset/preservation, final state/file rechecks, cancellation during reads, and Host failure propagation. Their primary seam is the public lifecycle with controlled time and scripted native/file boundaries. Error and status shapes were checked against the locally generated Codex 0.166.0 schema. Real joint integration and publication remain outside this ticket.
+
+See [code architecture](docs/code-architecture.md), [ticket #2](https://github.com/BuddyLabsCo/issue-runner-agent-codex/issues/2), [ticket #3](https://github.com/BuddyLabsCo/issue-runner-agent-codex/issues/3), [ticket #4](https://github.com/BuddyLabsCo/issue-runner-agent-codex/issues/4), [ticket #5](https://github.com/BuddyLabsCo/issue-runner-agent-codex/issues/5), and [ticket #6](https://github.com/BuddyLabsCo/issue-runner-agent-codex/issues/6) for ownership and scope.
