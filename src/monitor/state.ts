@@ -14,7 +14,7 @@ export interface ThreadState {
   turns: NativeTurn[];
 }
 
-function threadState(value: unknown, ref: string): ThreadState {
+export function threadState(value: unknown, ref: string): ThreadState {
   const thread = object(object(value).thread);
   if (thread.id !== ref || !Array.isArray(thread.turns))
     throw new Error("Invalid Codex thread response");
@@ -42,6 +42,7 @@ export class Observation {
   sessionref: string | undefined;
   thread: ThreadState | undefined;
   available = true;
+  initialized = false;
   willRetry: boolean | undefined;
   expectedFile: string | undefined;
   assignmentVersion = 0;
@@ -62,6 +63,7 @@ export class Observation {
       this.observe(notification);
     this.connectionLost = () => {
       this.available = false;
+      this.initialized = false;
       this.willRetry = undefined;
       this.invalidate();
       disconnected(this.sessionref);
@@ -83,7 +85,10 @@ export class Observation {
     this.invalidate();
   }
 
-  async bind(ref: string): Promise<void> {
+  async bind(
+    ref: string,
+    items: Record<string, unknown>[] = [],
+  ): Promise<void> {
     if (this.sessionref !== undefined && this.sessionref !== ref)
       throw new Error("Codex session is already bound");
     if (this.binding) return this.binding;
@@ -91,7 +96,15 @@ export class Observation {
     // Native resume attaches this connection's listener without sending a business turn.
     this.binding = this.client
       .request("thread/resume", { threadId: ref, excludeTurns: true })
-      .then(() => this.refresh());
+      .then(() => this.refresh())
+      .then(() => {
+        if (this.stopped || !this.available) return;
+        this.initialized = true;
+        this.invalidate(false);
+      });
+    // Publish evidence before initialization finishes so readiness stops new input.
+    this.markerItems.push(...items);
+    this.invalidate(false);
     try {
       await this.binding;
     } catch (error) {
@@ -122,27 +135,28 @@ export class Observation {
     for (const listener of this.changes) listener();
   }
 
-  hasMarker(guid: string): boolean {
+  get items(): Record<string, unknown>[] {
     return [
       ...this.markerItems,
       ...(this.thread?.turns.flatMap((turn) => turn.items) ?? []),
-    ].some(
-      (item) =>
-        item.type === "commandExecution" &&
-        item.source === "userShell" &&
-        typeof item.command === "string" &&
-        item.command.includes(guid),
-    );
+    ];
   }
 
   private observe({ method, params }: Notification): void {
-    if (
-      this.stopped ||
-      !this.available ||
-      !this.sessionref ||
-      params.threadId !== this.sessionref
-    )
+    if (this.stopped || !this.available) return;
+    if (!this.sessionref) {
+      if (
+        [
+          "thread/started",
+          "item/started",
+          "item/completed",
+          "turn/completed",
+        ].includes(method)
+      )
+        this.invalidate();
       return;
+    }
+    if (params.threadId !== this.sessionref) return;
     if (method === "thread/status/changed") {
       this.latestStatus = object(params.status);
       if (this.thread) this.thread.status = this.latestStatus;
@@ -200,6 +214,7 @@ export class Observation {
   stop(): void {
     this.stopped = true;
     this.available = false;
+    this.initialized = false;
     this.invalidate();
     this.client.notifications.delete(this.notification);
     this.client.disconnections.delete(this.connectionLost);

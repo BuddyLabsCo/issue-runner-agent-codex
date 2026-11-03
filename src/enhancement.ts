@@ -18,6 +18,7 @@ function assemble(
   const observation = new Observation(client);
   const readiness = new Readiness(
     host,
+    client,
     observation,
     randomUUID(),
     options.readyTimeout,
