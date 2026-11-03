@@ -46,6 +46,9 @@ export class Observation {
   expectedFile: string | undefined;
   assignmentVersion = 0;
   version = 0;
+  private snapshotVersion = 0;
+  private latestStatus: Record<string, unknown> | undefined;
+  private binding: Promise<void> | undefined;
   private stopped = false;
   private readonly notification;
   private readonly connectionLost;
@@ -67,8 +70,9 @@ export class Observation {
     client.disconnections.add(this.connectionLost);
   }
 
-  private invalidate(): void {
+  private invalidate(invalidateSnapshot = true): void {
     this.version++;
+    if (invalidateSnapshot) this.snapshotVersion++;
     for (const listener of this.changes) listener();
   }
 
@@ -82,20 +86,25 @@ export class Observation {
   async bind(ref: string): Promise<void> {
     if (this.sessionref !== undefined && this.sessionref !== ref)
       throw new Error("Codex session is already bound");
-    if (this.sessionref === ref) return;
+    if (this.binding) return this.binding;
     this.sessionref = ref;
     // Native resume attaches this connection's listener without sending a business turn.
-    await this.client.request("thread/resume", {
-      threadId: ref,
-      excludeTurns: true,
-    });
-    await this.refresh();
+    this.binding = this.client
+      .request("thread/resume", { threadId: ref, excludeTurns: true })
+      .then(() => this.refresh());
+    try {
+      await this.binding;
+    } catch (error) {
+      this.binding = undefined;
+      throw error;
+    }
   }
 
   async refresh(): Promise<void> {
     const ref = this.sessionref;
     if (!ref || this.stopped || !this.available) return;
-    const version = this.version;
+    const version = this.snapshotVersion;
+    const status = this.latestStatus;
     const result = threadState(
       await this.client.request("thread/read", {
         threadId: ref,
@@ -103,7 +112,10 @@ export class Observation {
       }),
       ref,
     );
-    if (this.stopped || !this.available || version !== this.version) return;
+    if (this.stopped || !this.available || version !== this.snapshotVersion)
+      return;
+    if (this.latestStatus && status !== this.latestStatus)
+      result.status = this.latestStatus;
     if (this.thread?.turns.at(-1)?.id !== result.turns.at(-1)?.id)
       this.willRetry = undefined;
     this.thread = result;
@@ -131,6 +143,13 @@ export class Observation {
       params.threadId !== this.sessionref
     )
       return;
+    if (method === "thread/status/changed") {
+      this.latestStatus = object(params.status);
+      if (this.thread) this.thread.status = this.latestStatus;
+      // Status patches merge into pending snapshots without discarding their history.
+      this.invalidate(false);
+      return;
+    }
     if (method === "item/started" || method === "item/completed") {
       const item = object(params.item);
       if (item.type === "commandExecution" && item.source === "userShell")
@@ -172,8 +191,6 @@ export class Observation {
         ],
       };
     }
-    if (method === "thread/status/changed" && this.thread)
-      this.thread.status = object(params.status);
     if (method === "error" && params.turnId === this.thread?.turns.at(-1)?.id)
       this.willRetry =
         typeof params.willRetry === "boolean" ? params.willRetry : undefined;
