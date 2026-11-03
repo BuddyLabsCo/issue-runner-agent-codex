@@ -54,7 +54,7 @@ await test("packs JavaScript and declarations for a Core-contract consumer witho
   await runNpm(
     [
       "install",
-      "--offline",
+      "--prefer-offline",
       "--ignore-scripts",
       "--no-audit",
       "--no-fund",

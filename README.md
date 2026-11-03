@@ -73,6 +73,6 @@ The native boundary invokes `codex app-server daemon start` and `codex app-serve
 
 Protocol references are the [0.166.0 proxy dispatch](https://github.com/openai/codex/blob/rust-v0.166.0/codex-rs/cli/src/main.rs) and [native WebSocket transport](https://github.com/openai/codex/blob/rust-v0.166.0/codex-rs/app-server-transport/src/transport/unix_socket.rs). The initial snapshot uses the supported full-history `thread/read` response; that native API is deprecated for paginated threads and may require migration in a later native-version update.
 
-Tests exercise the public factory through a bound Host, controlled time, and a scripted native byte bridge. The package test builds and installs the tarball offline with the supplied Core contract, compiles a consumer, and checks runtime exports. CI already targets Ubuntu and Windows; implementation and fixtures use portable Node APIs.
+Tests exercise the public factory through a bound Host, controlled time, and a scripted native byte bridge. The package test builds and installs the tarball with the supplied Core contract, compiles a consumer, and checks runtime exports. Installation prefers cached dependencies and fetches missing registry data when needed. CI already targets Ubuntu and Windows; implementation and fixtures use portable Node APIs.
 
 See [code architecture](docs/code-architecture.md) and [ticket #2](https://github.com/BuddyLabsCo/issue-runner-agent-codex/issues/2) for ownership and scope.
