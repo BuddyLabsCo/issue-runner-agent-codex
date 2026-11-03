@@ -21,7 +21,7 @@ export class NativeClient {
   readonly notifications = new Set<(notification: Notification) => void>();
   readonly disconnections = new Set<() => void>();
   available = true;
-  hasConfigurationWarnings = false;
+  readonly configurationWarnings: Record<string, unknown>[] = [];
   private sequence = 0;
   private readonly pending = new Map<
     number,
@@ -72,8 +72,8 @@ export class NativeClient {
             method: message.method,
             params: object(message.params),
           };
-          this.hasConfigurationWarnings ||=
-            notification.method === "configWarning";
+          if (notification.method === "configWarning")
+            this.configurationWarnings.push(notification.params);
           for (const listener of this.notifications) listener(notification);
         } else if (typeof message.id === "number") {
           const pending = this.pending.get(message.id);
