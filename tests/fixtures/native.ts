@@ -3,6 +3,7 @@ import childProcess from "node:child_process";
 import { EventEmitter } from "node:events";
 import { createServer, connect } from "node:net";
 import { PassThrough } from "node:stream";
+import { join, resolve } from "node:path";
 import { setImmediate } from "node:timers/promises";
 import type { TestContext } from "node:test";
 import type { EnhancementHost } from "issue-runner-core/terminal";
@@ -55,7 +56,39 @@ export function thread(id = "known", items: unknown[] = []) {
   };
 }
 
-export async function nativeFixture(t: TestContext) {
+export async function nativeFixture(
+  t: TestContext,
+  spawnGit?: typeof childProcess.spawn,
+) {
+  const primary = resolve(process.cwd(), "primary repo");
+  const configuration: Record<string, unknown> = {
+    projects: { [primary]: { trust_level: "trusted" } },
+  };
+  const gitLaunches: { args: readonly string[]; cwd: unknown }[] = [];
+  let gitHandler = (
+    args: readonly string[],
+    cwd: childProcess.SpawnOptions["cwd"],
+  ) => {
+    if (args.includes("--show-toplevel"))
+      return typeof cwd === "string" ? resolve(cwd) : primary;
+    return join(primary, ".git");
+  };
+  let configHandler = (request: Request): unknown => {
+    if (request.method === "config/read")
+      return { config: configuration, origins: {}, layers: [] };
+    assert.equal(request.params.keyPath, "projects");
+    assert.equal(request.params.mergeStrategy, "upsert");
+    const projects = (configuration.projects ??= {}) as Record<string, unknown>;
+    for (const [path, value] of Object.entries(
+      request.params.value as Record<string, Record<string, unknown>>,
+    ))
+      projects[path] = { ...(projects[path] as object), ...value };
+    return {
+      status: "ok",
+      version: "written",
+      filePath: join(primary, "config.toml"),
+    };
+  };
   const requests: Request[] = [];
   const launches: {
     command: string;
@@ -114,7 +147,11 @@ export async function nativeFixture(t: TestContext) {
       requests.push(request);
       if (request.id === undefined) return;
       void Promise.resolve()
-        .then(() => handler(request))
+        .then(() =>
+          request.method.startsWith("config/")
+            ? configHandler(request)
+            : handler(request),
+        )
         .then(
           (result) => {
             if (ws.readyState === WebSocket.OPEN)
@@ -143,7 +180,6 @@ export async function nativeFixture(t: TestContext) {
       args: readonly string[],
       options: childProcess.SpawnOptions,
     ) => {
-      launches.push({ command, args, options });
       const child = Object.assign(new EventEmitter(), {
         stdin: new PassThrough(),
         stdout: new PassThrough(),
@@ -153,6 +189,21 @@ export async function nativeFixture(t: TestContext) {
           return true;
         },
       });
+      if (command === "git") {
+        gitLaunches.push({ args, cwd: options.cwd });
+        if (spawnGit) return spawnGit(command, args, options);
+        queueMicrotask(() => {
+          try {
+            child.stdout.end(`${gitHandler(args, options.cwd)}\n`);
+            child.emit("close", 0);
+          } catch (error) {
+            child.emit("error", error);
+            child.emit("close", 1);
+          }
+        });
+        return child;
+      }
+      launches.push({ command, args, options });
       if (args.includes("proxy")) {
         const socket = connect(address.port, "127.0.0.1");
         socket.setNoDelay(true);
@@ -183,6 +234,21 @@ export async function nativeFixture(t: TestContext) {
     );
   });
   return {
+    primary,
+    configuration,
+    gitLaunches,
+    get gitHandler() {
+      return gitHandler;
+    },
+    set gitHandler(value: typeof gitHandler) {
+      gitHandler = value;
+    },
+    get configHandler() {
+      return configHandler;
+    },
+    set configHandler(value: typeof configHandler) {
+      configHandler = value;
+    },
     requests,
     launches,
     sockets,
