@@ -22,8 +22,14 @@ function excludedError(error: unknown): string | undefined {
   }
 }
 
-interface Pending {
+type Category = "error" | "missing-handoff";
+
+interface Candidate {
   turn: string;
+  category: Category;
+}
+
+interface Pending extends Candidate {
   timer?: ReturnType<typeof setTimeout>;
   work?: Promise<void>;
 }
@@ -33,7 +39,7 @@ export class ErrorRecovery {
   private readonly observation: Observation;
   private readonly options: Options;
   private readonly cwd: string;
-  private attempts = 0;
+  private readonly attempts = { error: 0, "missing-handoff": 0 };
   private assignment = 0;
   private pending: Pending | undefined;
   private submission: Promise<void> | undefined;
@@ -59,7 +65,7 @@ export class ErrorRecovery {
     if (this.failure) throw this.failure.error;
   }
 
-  private eligible(): string | undefined {
+  private eligible(): Candidate | undefined {
     const observation = this.observation;
     const turn = observation.thread?.turns.at(-1);
     const status = observation.thread?.status.type;
@@ -68,11 +74,20 @@ export class ErrorRecovery {
       observation.initialized &&
       observation.sessionref &&
       observation.expectedFile &&
-      turn?.status === "failed" &&
-      (status === "idle" || status === "systemError") &&
-      observation.willRetry !== true
-    )
-      return turn.id;
+      turn
+    ) {
+      if (
+        turn.status === "failed" &&
+        (status === "idle" || status === "systemError") &&
+        observation.willRetry !== true
+      )
+        return { turn: turn.id, category: "error" };
+      if (
+        (turn.status === "completed" || turn.status === "interrupted") &&
+        status === "idle"
+      )
+        return { turn: turn.id, category: "missing-handoff" };
+    }
   }
 
   private cancel(): void {
@@ -80,63 +95,117 @@ export class ErrorRecovery {
     this.pending = undefined;
   }
 
+  private actionRequired(): boolean {
+    const reply = this.observation.thread?.turns
+      .at(-1)
+      ?.items.filter(
+        (item) =>
+          item.type === "agentMessage" &&
+          (item.phase == null || item.phase === "final_answer"),
+      )
+      .at(-1);
+    return (
+      typeof reply?.text === "string" &&
+      reply.text.trimStart().startsWith("[action required]")
+    );
+  }
+
+  private report(candidate: Candidate, message: string): void {
+    const report = `${candidate.category}:${this.assignment}:${candidate.turn}:${message}`;
+    if (this.reported === report) return;
+    this.reported = report;
+    diagnostic(this.observation.sessionref, message);
+  }
+
   private evaluate(): void {
     const observation = this.observation;
     if (this.assignment !== observation.assignmentVersion) {
       this.assignment = observation.assignmentVersion;
-      this.attempts = 0;
+      this.attempts.error = 0;
+      this.attempts["missing-handoff"] = 0;
       this.cancel();
     }
     const status = observation.thread?.turns.at(-1)?.status;
     if (status === "completed" || status === "interrupted") {
-      this.attempts = 0;
-      this.reported = undefined;
+      this.attempts.error = 0;
+      if (this.reported?.startsWith("error:")) this.reported = undefined;
     }
-    let turn = this.eligible();
-    const excluded = turn
-      ? excludedError(observation.thread?.turns.at(-1)?.error)
-      : undefined;
-    if (excluded) {
-      const report = `${this.assignment}:${turn}:${excluded}`;
-      if (this.reported !== report) {
-        this.reported = report;
-        diagnostic(
-          observation.sessionref,
-          `recovery=error excluded=${excluded}`,
-        );
-      }
-      turn = undefined;
+    let candidate = this.eligible();
+    const excluded =
+      candidate?.category === "error"
+        ? excludedError(observation.thread?.turns.at(-1)?.error)
+        : undefined;
+    if (excluded && candidate) {
+      this.report(candidate, `recovery=error excluded=${excluded}`);
+      candidate = undefined;
     }
-    if (!turn || this.pending?.turn !== turn) this.cancel();
-    if (turn && this.attempts >= this.options.retryLimit) {
-      const report = `${this.assignment}:${turn}:exhausted`;
-      if (this.reported !== report) {
-        this.reported = report;
-        diagnostic(
-          observation.sessionref,
-          `recovery=error exhausted=${this.attempts}/${this.options.retryLimit}`,
-        );
-      }
-      return;
+    if (candidate?.category === "missing-handoff" && this.actionRequired()) {
+      this.report(candidate, "ACTION REQUIRED!!!");
+      candidate = undefined;
     }
     if (
-      this.stopped ||
-      this.failure ||
-      !turn ||
-      this.pending ||
-      this.submission
+      !candidate ||
+      this.pending?.turn !== candidate.turn ||
+      this.pending.category !== candidate.category
     )
+      this.cancel();
+    if (candidate?.category === "missing-handoff") {
+      void this.inspectHandoff(candidate);
       return;
-    this.schedule(turn);
+    }
+    if (candidate) this.consider(candidate);
   }
 
-  private schedule(turn: string): void {
-    const pending: Pending = { turn };
+  private async inspectHandoff(candidate: Candidate): Promise<void> {
+    const observation = this.observation;
+    const version = observation.version;
+    const thread = observation.thread;
+    const current = () =>
+      !this.stopped &&
+      version === observation.version &&
+      thread === observation.thread;
+    try {
+      const present = await expectedFileExists(
+        resolve(this.cwd, observation.expectedFile!),
+      );
+      if (!current()) return;
+      if (present) {
+        this.attempts["missing-handoff"] = 0;
+        if (this.reported?.startsWith("missing-handoff:"))
+          this.reported = undefined;
+        this.cancel();
+        return;
+      }
+      this.consider(candidate);
+    } catch (error) {
+      if (!current()) return;
+      this.failure = { error };
+      this.cancel();
+    }
+  }
+
+  private consider(candidate: Candidate): void {
+    if (this.attempts[candidate.category] >= this.options.retryLimit) {
+      const { category } = candidate;
+      this.report(
+        candidate,
+        `recovery=${category} exhausted=${this.attempts[category]}/${this.options.retryLimit}`,
+      );
+      return;
+    }
+    if (this.stopped || this.failure || this.pending || this.submission) return;
+    this.schedule(candidate);
+  }
+
+  private schedule(candidate: Candidate): void {
+    const pending: Pending = { ...candidate };
     this.pending = pending;
     let remaining =
-      this.options.retryDelay[
-        Math.min(this.attempts, this.options.retryDelay.length - 1)
-      ]!;
+      pending.category === "missing-handoff"
+        ? this.options.handoffRecoveryDelaySeconds
+        : this.options.retryDelay[
+            Math.min(this.attempts.error, this.options.retryDelay.length - 1)
+          ]!;
     const schedule = () => {
       // Node clamps overflowing timer delays to one millisecond.
       const seconds = Math.min(remaining, 2_147_483.647);
@@ -178,18 +247,26 @@ export class ErrorRecovery {
     }
     if (this.pending !== pending) return true;
     this.cancel();
+    const candidate = this.eligible();
     if (
       version !== this.observation.version ||
-      this.eligible() !== pending.turn ||
-      excludedError(this.observation.thread?.turns.at(-1)?.error) !== undefined
+      candidate?.turn !== pending.turn ||
+      candidate.category !== pending.category ||
+      (pending.category === "missing-handoff" && this.actionRequired()) ||
+      (pending.category === "error" &&
+        excludedError(this.observation.thread?.turns.at(-1)?.error) !==
+          undefined)
     )
       return true;
-    if (present) return false;
+    if (present) {
+      this.attempts["missing-handoff"] = 0;
+      return false;
+    }
     this.submission = pending.work;
-    this.attempts++;
+    const attempt = ++this.attempts[pending.category];
     diagnostic(
       this.observation.sessionref,
-      `recovery=error attempt=${this.attempts}/${this.options.retryLimit}`,
+      `recovery=${pending.category} attempt=${attempt}/${this.options.retryLimit}`,
     );
     await this.host.requestRecovery();
     // A submission need not immediately produce a native turn notification.
