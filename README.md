@@ -38,11 +38,13 @@ try {
 }
 ```
 
-Call `startMonitoring` before submitting the configured Agent command. Supply the exact native conversation ref. Native `thread/resume` attaches the observer to that conversation without configuration overrides or business input; `thread/read` loads current state and history. Native notifications maintain observation, filtered by that ref. The terminal still owns the interactive start/resume command.
+Call `startMonitoring` before submitting the configured Agent command. When resuming, supply the exact native conversation ref. The enhancement searches only that conversation and never falls back to global discovery. Native `thread/resume` attaches the observer without configuration overrides or business input; `thread/read` loads current state and history. Native notifications maintain observation, filtered by that ref. The terminal still owns the interactive start/resume command.
+
+For a new conversation, omit the ref: `await enhancement.startMonitoring()`. During readiness, the enhancement enumerates loaded threads through `thread/loaded/list` and inspects their native userShell commands. Only a command containing this Tab's GUID identifies the conversation. The enhancement binds its enclosing threadId, reads current state through the same observation path, and returns that ref. It never selects by cwd, thread order, recency, filesystem markers, or model output. Tabs sharing a cwd have distinct GUIDs. Readiness rounds and native notifications trigger discovery scans; enumeration stops after binding.
 
 Each readiness wait submits `!` followed by the instance's GUID through `host.submitText`, then repeats after two seconds when the previous round has finished. Host retains its configured submit key. A userShell command containing the GUID proves readiness, including failed, nonzero, concatenated, or multiline commands. Model output does not prove readiness.
 
-Detection stops marker scheduling and waits for an issued input round to finish. Each wait has its own deadline. After timeout, retry `waitUntilReady()` on the same instance: it retains its GUID, ref, and observation, and does not replay the Agent command. Overlapping waits share input rounds and retain separate deadlines. An instance without a supplied ref cannot claim readiness in this slice.
+Detection stops marker scheduling and waits for an issued input round to finish. Each wait has its own deadline. Timeout rejects without claiming readiness. Retry `waitUntilReady()` on the same instance: it retains its GUID, any discovered ref, and observation, and does not replay the Agent command. Overlapping waits share input rounds and retain separate deadlines.
 
 `onAssignment` retains the exact path string. A different path replaces the assignment; the same string continues it. Assignments are not mapped to native turns. New bound turns, assignment replacement, disconnect, and stop invalidate stale asynchronous observations.
 
@@ -83,7 +85,7 @@ A disconnect marks observation unavailable, rejects an active readiness wait, an
 
 Await `stop()` to cancel readiness and release the owned proxy, connection, subscriptions, and timers. Repeated calls wait for the same cleanup. Stop preserves the terminal, Agent, shared daemon, native history, and persisted configuration. An already-issued Host submission remains owned by Host.
 
-The factory rejects initialization and preflight failures after cleaning partial resources. Host input failures propagate through readiness. Unknown-ref discovery, recovery, and reconnection are separate tickets.
+The factory rejects initialization and preflight failures after cleaning partial resources. Host input and native discovery failures propagate through readiness. Recovery and reconnection are separate tickets.
 
 ## Implementation and verification
 
@@ -93,4 +95,6 @@ Protocol references are the [0.166.0 proxy dispatch](https://github.com/openai/c
 
 Tests exercise the public factory through a bound Host, controlled time, and a scripted native byte bridge. Trust tests verify factory ordering, structured writes, current hook hashes, managed and disabled definitions, policy and warning rejection, mismatched readback, repeated creation and partial cleanup. Git discovery also runs against temporary ordinary and linked checkouts. The package test builds and installs the tarball with the supplied Core contract, compiles a consumer, and checks runtime exports. Installation prefers cached dependencies and fetches missing registry data when needed. CI already targets Ubuntu and Windows; implementation and fixtures use portable Node APIs.
 
-See [code architecture](docs/code-architecture.md), [ticket #2](https://github.com/BuddyLabsCo/issue-runner-agent-codex/issues/2), [ticket #3](https://github.com/BuddyLabsCo/issue-runner-agent-codex/issues/3), and [ticket #4](https://github.com/BuddyLabsCo/issue-runner-agent-codex/issues/4) for ownership and scope.
+Discovery tests cover multiple loaded threads and pages, same-cwd Tabs, nonmatching evidence, delayed loading, failed multiline commands, pending Host input, timeout/retry, notification races, invalid pages, and stop during discovery. Loaded-thread request and response shapes were checked against the locally generated Codex 0.166.0 protocol schema. Joint integration acceptance and registry publication remain outside this ticket.
+
+See [code architecture](docs/code-architecture.md), [ticket #2](https://github.com/BuddyLabsCo/issue-runner-agent-codex/issues/2), [ticket #3](https://github.com/BuddyLabsCo/issue-runner-agent-codex/issues/3), [ticket #4](https://github.com/BuddyLabsCo/issue-runner-agent-codex/issues/4), and [ticket #5](https://github.com/BuddyLabsCo/issue-runner-agent-codex/issues/5) for ownership and scope.

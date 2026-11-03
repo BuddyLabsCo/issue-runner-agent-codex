@@ -169,7 +169,7 @@ await test("readiness finishes an issued input round before returning, including
   await instance.stop();
 });
 
-await test("unbound instances never adopt a conversation and stop invalidates readiness repeatably", async (t) => {
+await test("unbound instances never adopt notification-only evidence and stop invalidates readiness repeatably", async (t) => {
   const native = await nativeFixture(t);
   const bound = boundHost();
   const instance = await createEnhancement(
@@ -197,8 +197,9 @@ await test("unbound instances never adopt a conversation and stop invalidates re
   await flush();
   assert.equal(bound.inputs.length, 1);
   assert.equal(
-    native.requests.filter((request) => request.method.startsWith("thread/"))
-      .length,
+    native.requests.filter((request) =>
+      ["thread/resume", "thread/read"].includes(request.method),
+    ).length,
     0,
   );
   await assert.rejects(instance.waitUntilReady(), /stopped/);

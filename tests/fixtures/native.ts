@@ -183,6 +183,7 @@ export async function nativeFixture(
   assert.ok(address && typeof address !== "string");
   let snapshot = thread();
   let handler: (request: Request) => unknown = (request) => {
+    if (request.method === "thread/loaded/list") return { data: [] };
     if (request.method === "thread/resume" || request.method === "thread/read")
       return { thread: snapshot };
     return {};

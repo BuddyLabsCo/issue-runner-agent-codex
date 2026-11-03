@@ -51,10 +51,11 @@ export class Readiness {
           finish(new Error("Codex observation unavailable"));
           return;
         }
-        if (
-          this.observation.sessionref &&
-          this.observation.hasMarker(this.guid)
-        ) {
+        if (!this.observation.sessionref) {
+          void this.observation.refresh(this.guid).catch(finish);
+          return;
+        }
+        if (this.observation.hasMarker(this.guid)) {
           detected = true;
           clearTimeout(next);
           if (!this.round) finish();
@@ -106,6 +107,8 @@ export class Readiness {
       const cancel = () => finish(new Error("Codex enhancement stopped"));
       this.cancellations.add(cancel);
       this.observation.changes.add(changed);
+      if (this.observation.sessionref)
+        void this.observation.bind(this.observation.sessionref).catch(finish);
       changed();
       if (!settled) submit();
     });

@@ -37,6 +37,19 @@ function threadState(value: unknown, ref: string): ThreadState {
   return { id: ref, status: object(thread.status), turns };
 }
 
+function containsMarker(
+  items: Record<string, unknown>[],
+  guid: string,
+): boolean {
+  return items.some(
+    (item) =>
+      item.type === "commandExecution" &&
+      item.source === "userShell" &&
+      typeof item.command === "string" &&
+      item.command.includes(guid),
+  );
+}
+
 export class Observation {
   readonly changes = new Set<() => void>();
   sessionref: string | undefined;
@@ -49,6 +62,7 @@ export class Observation {
   private snapshotVersion = 0;
   private latestStatus: Record<string, unknown> | undefined;
   private binding: Promise<void> | undefined;
+  private discovery: Promise<void> | undefined;
   private stopped = false;
   private readonly notification;
   private readonly connectionLost;
@@ -100,9 +114,10 @@ export class Observation {
     }
   }
 
-  async refresh(): Promise<void> {
+  async refresh(guid?: string): Promise<void> {
     const ref = this.sessionref;
-    if (!ref || this.stopped || !this.available) return;
+    if (this.stopped || !this.available) return;
+    if (!ref) return guid ? this.discover(guid) : undefined;
     const version = this.snapshotVersion;
     const status = this.latestStatus;
     const result = threadState(
@@ -123,26 +138,88 @@ export class Observation {
   }
 
   hasMarker(guid: string): boolean {
-    return [
-      ...this.markerItems,
-      ...(this.thread?.turns.flatMap((turn) => turn.items) ?? []),
-    ].some(
-      (item) =>
-        item.type === "commandExecution" &&
-        item.source === "userShell" &&
-        typeof item.command === "string" &&
-        item.command.includes(guid),
+    return containsMarker(
+      [
+        ...this.markerItems,
+        ...(this.thread?.turns.flatMap((turn) => turn.items) ?? []),
+      ],
+      guid,
     );
   }
 
+  private discover(guid: string): Promise<void> {
+    const version = this.version;
+    this.discovery ??= this.scanLoaded(guid).finally(() => {
+      this.discovery = undefined;
+      // Recheck events received while the loaded-thread snapshot was in flight.
+      if (version !== this.version && !this.sessionref)
+        for (const listener of this.changes) listener();
+    });
+    return this.discovery;
+  }
+
+  private async scanLoaded(guid: string): Promise<void> {
+    let cursor: string | undefined;
+    const cursors = new Set<string>();
+    do {
+      const page = object(
+        await this.client.request(
+          "thread/loaded/list",
+          cursor ? { cursor } : {},
+        ),
+      );
+      if (this.stopped || !this.available || this.sessionref) return;
+      if (
+        !Array.isArray(page.data) ||
+        page.data.some((ref: unknown) => typeof ref !== "string" || !ref.trim())
+      )
+        throw new Error("Invalid Codex loaded threads response");
+      for (const ref of page.data as string[]) {
+        const snapshot = threadState(
+          await this.client.request("thread/read", {
+            threadId: ref,
+            includeTurns: true,
+          }),
+          ref,
+        );
+        if (this.stopped || !this.available || this.sessionref) return;
+        const items = snapshot.turns.flatMap((turn) => turn.items);
+        if (!containsMarker(items, guid)) continue;
+        await this.bind(ref);
+        if (this.stopped || !this.available) return;
+        this.markerItems.push(...items);
+        for (const listener of this.changes) listener();
+        return;
+      }
+      if (
+        page.nextCursor !== undefined &&
+        page.nextCursor !== null &&
+        (typeof page.nextCursor !== "string" ||
+          !page.nextCursor ||
+          cursors.has(page.nextCursor))
+      )
+        throw new Error("Invalid Codex loaded threads cursor");
+      cursor =
+        typeof page.nextCursor === "string" ? page.nextCursor : undefined;
+      if (cursor) cursors.add(cursor);
+    } while (cursor);
+  }
+
   private observe({ method, params }: Notification): void {
-    if (
-      this.stopped ||
-      !this.available ||
-      !this.sessionref ||
-      params.threadId !== this.sessionref
-    )
+    if (this.stopped || !this.available) return;
+    if (!this.sessionref) {
+      if (
+        [
+          "thread/started",
+          "item/started",
+          "item/completed",
+          "turn/completed",
+        ].includes(method)
+      )
+        this.invalidate();
       return;
+    }
+    if (params.threadId !== this.sessionref) return;
     if (method === "thread/status/changed") {
       this.latestStatus = object(params.status);
       if (this.thread) this.thread.status = this.latestStatus;
