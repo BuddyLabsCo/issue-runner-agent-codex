@@ -43,6 +43,19 @@ const productionImports = [
   },
 ];
 
+const nativeIoImport = {
+  regex:
+    "^(node:)?(fs|net|tls|http|https|http2|dns|dgram|child_process|cluster|worker_threads|readline|tty)(/|$)",
+  message: "Keep Codex and filesystem I/O in src/codex/.",
+};
+
+const featureImport = {
+  regex:
+    "(^|/)(preflight|session|monitor|recovery)(/|$)|(^|/)enhancement(\\.[^/]+)?$",
+  message:
+    "Codex I/O and shared helpers must not depend on lifecycle or feature policy.",
+};
+
 export default defineConfig(
   { ignores: ["coverage/**", "dist/**"] },
   {
@@ -111,20 +124,16 @@ export default defineConfig(
     },
   },
   {
-    files: ["src/enhancement/**/*.{js,mjs,cjs,ts,tsx,mts,cts}"],
+    files: [
+      "src/*.{js,mjs,cjs,ts,tsx,mts,cts}",
+      "src/{preflight,session,monitor,recovery}/**/*.{js,mjs,cjs,ts,tsx,mts,cts}",
+    ],
     rules: {
       "no-restricted-imports": [
         "error",
         {
           paths: portableImports,
-          patterns: [
-            ...productionImports,
-            {
-              regex:
-                "^(node:)?(fs|net|tls|http|https|http2|dns|dgram|child_process|cluster|worker_threads|readline|tty)(/|$)",
-              message: "Keep Codex and filesystem I/O in src/codex/.",
-            },
-          ],
+          patterns: [...productionImports, nativeIoImport],
         },
       ],
     },
@@ -136,11 +145,25 @@ export default defineConfig(
         "error",
         {
           paths: portableImports,
+          patterns: [...productionImports, featureImport],
+        },
+      ],
+    },
+  },
+  {
+    files: ["src/{config,diagnostics}.{js,mjs,cjs,ts,tsx,mts,cts}"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          paths: portableImports,
           patterns: [
             ...productionImports,
+            nativeIoImport,
+            featureImport,
             {
-              regex: "(^|/)enhancement(/|$)",
-              message: "Codex I/O must not depend on enhancement policy.",
+              regex: "(^|/)codex(/|$)",
+              message: "Shared configuration and diagnostics stay independent.",
             },
           ],
         },

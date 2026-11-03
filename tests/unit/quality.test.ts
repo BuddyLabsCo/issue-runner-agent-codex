@@ -6,15 +6,24 @@ const eslint = new ESLint();
 
 await test("rejects imports across architecture boundaries", async () => {
   const cases: [string, string][] = [
-    ["src/codex/client.mjs", "../enhancement/session.mjs"],
-    ["src/codex/nested/client.mjs", "../../enhancement/session.mjs"],
-    ["src/enhancement/recovery.mjs", "../../tests/fixtures/server.mjs"],
+    ["src/codex/client.mjs", "../enhancement.mjs"],
+    ["src/codex/nested/client.mjs", "../../monitor/state.mjs"],
+    ["src/codex/client.mjs", "../preflight/trust.mjs"],
+    ["src/codex/client.mjs", "../session/ready.mjs"],
+    ["src/codex/client.mjs", "../recovery/policy.mjs"],
+    ["src/recovery/policy.mjs", "../../tests/fixtures/server.mjs"],
     ["src/codex/client.mjs", "../../tests/fixtures/server.mjs"],
     ["src/index.mjs", "../tests/fixtures/server.mjs"],
-    ["src/enhancement/recovery.mjs", "node:fs/promises"],
-    ["src/enhancement/recovery.mjs", "fs"],
-    ["src/enhancement/recovery.mjs", "node:net"],
-    ["src/enhancement/recovery.mjs", "child_process"],
+    ["src/enhancement.mjs", "node:net"],
+    ["src/preflight/trust.mjs", "child_process"],
+    ["src/session/ready.mjs", "node:net"],
+    ["src/monitor/state.mjs", "node:fs/promises"],
+    ["src/recovery/policy.mjs", "fs"],
+    ["src/config.mjs", "./session/ready.mjs"],
+    ["src/diagnostics.mjs", "./recovery/policy.mjs"],
+    ["src/config.mjs", "./codex/client.mjs"],
+    ["src/diagnostics.mjs", "./enhancement.mjs"],
+    ["src/config.mjs", "node:fs/promises"],
     ["src/index.mjs", "issue-runner-core/dist/terminal.js"],
     ["src/index.mjs", "issue-runner-herdr"],
     ["src/codex/client.mjs", "herdr"],
@@ -34,12 +43,21 @@ await test("rejects imports across architecture boundaries", async () => {
 
 await test("allows dependencies in the intended direction", async () => {
   const cases: [string, string][] = [
-    ["src/index.mjs", 'export * from "./enhancement/session.mjs";'],
-    ["src/enhancement/session.mjs", 'export * from "../codex/client.mjs";'],
-    [
-      "src/enhancement/session.mjs",
-      'export { join, resolve } from "node:path";',
-    ],
+    ["src/index.mjs", 'export * from "./enhancement.mjs";'],
+    ["src/enhancement.mjs", 'export * from "./config.mjs";'],
+    ["src/enhancement.mjs", 'export * from "./preflight/trust.mjs";'],
+    ["src/enhancement.mjs", 'export * from "./session/ready.mjs";'],
+    ["src/enhancement.mjs", 'export * from "./monitor/state.mjs";'],
+    ["src/enhancement.mjs", 'export * from "./recovery/policy.mjs";'],
+    ["src/preflight/trust.mjs", 'export * from "../codex/config.mjs";'],
+    ["src/session/ready.mjs", 'export * from "../codex/client.mjs";'],
+    ["src/monitor/state.mjs", 'export * from "../codex/client.mjs";'],
+    ["src/recovery/policy.mjs", 'export * from "../codex/files.mjs";'],
+    ["src/session/ready.mjs", 'export { join, resolve } from "node:path";'],
+    ["src/monitor/state.mjs", 'export * from "../diagnostics.mjs";'],
+    ["src/codex/client.mjs", 'export * from "../config.mjs";'],
+    ["src/codex/client.mjs", 'export * from "../diagnostics.mjs";'],
+    ["src/codex/config.mjs", 'export * from "./index.mjs";'],
     ["src/codex/client.mjs", 'export * from "node:net";'],
     ["src/codex/client.mjs", 'export * from "node:fs/promises";'],
     ["src/index.mjs", 'export * from "issue-runner-core/terminal";'],
@@ -58,7 +76,7 @@ await test("caps files at 500 code lines, excluding blanks and comments", async 
   for (const lines of [500, 501]) {
     const [result] = await eslint.lintText(
       "// Not counted.\n\n" + "export {};\n".repeat(lines),
-      { filePath: "src/enhancement/large.mjs" },
+      { filePath: "src/recovery/large.mjs" },
     );
     assert.equal(
       result?.messages.some((message) => message.ruleId === "max-lines"),
@@ -93,7 +111,13 @@ await test("rejects OS-bound code in implementation, tests and fixtures", async 
   ];
   for (const filePath of [
     "src/codex/client.mjs",
-    "src/enhancement/session.mjs",
+    "src/enhancement.mjs",
+    "src/preflight/trust.mjs",
+    "src/session/ready.mjs",
+    "src/monitor/state.mjs",
+    "src/recovery/policy.mjs",
+    "src/config.mjs",
+    "src/diagnostics.mjs",
     "tests/unit/example.mjs",
     "tests/fixtures/server.mjs",
   ]) {

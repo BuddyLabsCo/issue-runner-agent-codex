@@ -4,8 +4,14 @@
 /
 |-- src/                       # Public exports and enhancement assembly
 |   |-- index.ts               # contractVersion and createEnhancement; Core contract only
-|   |-- enhancement/           # Per-Host lifecycle, GUID readiness, assignments and recovery policy
-|   `-- codex/                 # Trust preflight, shared daemon RPC, native events, state reads and diagnostics
+|   |-- enhancement.ts         # Per-Host lifecycle, current assignment and resource cleanup
+|   |-- config.ts              # Configuration validation and defaults
+|   |-- preflight/             # Primary checkout trust and hook trust
+|   |-- session/               # GUID discovery, session binding and input readiness
+|   |-- monitor/               # Notifications, latest thread/turn state and reconnection
+|   |-- recovery/              # Error/handoff recovery, budgets, waits and cancellation
+|   |-- codex/                 # Native Codex configuration, RPC and portable I/O
+|   `-- diagnostics.ts         # Terminal errors and recovery-submission output
 |-- tests/
 |   |-- unit/                  # Configuration, marker matching, recovery rules and static quality checks
 |   |-- integration/           # Enhancement lifecycle through Host and Codex protocol substitutes
@@ -17,15 +23,17 @@
 ```
 
 ```text
-public module -> enhancement/ -> codex/ -> Codex shared daemon
-                           # Host receives terminal input and recovery requests
-                           # Native I/O stays in codex/; policy stays in enhancement/
+index.ts -> enhancement.ts -> preflight/ | session/ | monitor/ | recovery/
+                          -> codex/ -> Codex shared daemon
+                          # Feature modules share Codex operations and the injected Host
+                          # config.ts and diagnostics.ts stay independent of lifecycle policy
 ```
 
 - Public exports: `contractVersion` and `createEnhancement`; consume only `issue-runner-core/terminal` contracts. No Core workflow internals or terminal-plugin dependencies.
-- `enhancement/` owns one Host/session binding, readiness and the current expectedFile; separate error/handoff budgets, waits, cancellation and `[action required]` handling stay together.
-- `codex/` owns portable checkout/hook trust, native RPC/notification decoding, latest-state queries, reconnect and stderr output. Keep the shared daemon and unrelated sessions untouched.
-- The terminal plugin owns interactive start/resume commands and terminal I/O. Request recovery through the injected Host; Core owns handoff wording, file acceptance and PR metadata.
+- `enhancement.ts` assembles the private modules and implements the public lifecycle. `preflight/` completes trust before startup; `session/` establishes binding and ready, without business recovery.
+- `monitor/` reports current facts and owns reconnect; `recovery/` decides whether to request Host recovery, including `[action required]`, excluded errors, separate budgets, waits and cancellation.
+- Keep native protocol and filesystem I/O in `codex/`, without imports from lifecycle or feature modules. Preserve the shared daemon and unrelated sessions. `config.ts` and `diagnostics.ts` do not import feature modules.
+- The terminal plugin owns interactive start/resume commands and terminal I/O. Core owns handoff wording and acceptance; task handoffs supply PR metadata.
 - **OS-bound code is prohibited throughout this repository, including adapters, tests and fixtures.** No platform branches, OS-specific commands, fixed native paths/socket conventions, shell-dependent execution, PTY handling or native key codes. Use portable Node APIs and the injected Host; there is no platform-specific adapter exception.
 - Keep helpers beside their owner. The tree defines the target layout; add modules when needed, not as empty scaffolding.
 - Run `npm run check` for formatting, lint and types; `npm test` verifies the quality rules.
