@@ -50,9 +50,13 @@ Detection stops marker scheduling and waits for an issued input round to finish.
 
 Await `createEnhancement` before starting Codex through the terminal. The factory resolves the task Worktree's absolute Git common directory and verifies the ordinary primary checkout containing that `.git` directory. It trusts that primary checkout, including when the supplied cwd is inside a linked Worktree. Bare repositories and separate-git-dir layouts are unsupported; no Core checkout field is required.
 
-The factory reads effective native configuration for the supplied cwd. If the primary checkout is not already trusted, it writes a structured project entry through `config/value/write` with upsert, then reads effective configuration again. Native Codex serializes path keys, including spaces, quotes, dots and backslashes. Other project entries, project fields and unrelated settings are preserved. Repeated creation leaves existing effective trust unchanged.
+The factory reads effective native configuration for the supplied cwd. A null or missing projects map means no project trust is configured. If the primary checkout is not already trusted, the factory writes a structured project entry through `config/value/write` with upsert, then reads effective configuration again. Native Codex serializes path keys, including spaces, quotes, dots and backslashes. Other project entries, project fields and unrelated settings are preserved. Repeated creation leaves existing effective trust unchanged.
 
-Git failures, native configuration errors, configuration warnings, managed write overrides and ineffective readback reject the awaited factory. Configuration warnings received during initialization also prevent trust verification. Failure releases the factory's owned connection and proxy; it preserves the shared daemon and other observers. A completed trust write remains persisted even if later verification fails. Successful trust changes are quiet and require no temporary Agent. Hook trust remains a separate requirement.
+The factory also checks trust overrides for the supplied cwd and its Git task checkout root, and rejects disabled native project layers. An explicitly untrusted Worktree or cwd remains unchanged and prevents startup, even when the primary checkout is trusted.
+
+Initial configuration warnings can describe project layers that a corrective trust write enables. They do not block that write; readback must confirm effective trust and enabled project layers. Warnings received during writing or readback, Git failures, native configuration errors and managed write overrides reject the awaited factory. An already-trusted checkout still rejects unresolved initialization warnings.
+
+Failure releases the factory's owned connection and proxy; it preserves the shared daemon and other observers. A completed trust write remains persisted even if later verification fails. Successful trust changes are quiet and require no temporary Agent. Hook trust remains a separate requirement.
 
 ## Configure shared enhancement options
 

@@ -33,7 +33,7 @@ function git(context: EnhancementContext, args: string[]): Promise<string> {
 
 export async function primaryCheckout(
   context: EnhancementContext,
-): Promise<string> {
+): Promise<{ primary: string; worktree: string }> {
   const common = await git(context, [
     "--path-format=absolute",
     "--git-common-dir",
@@ -51,5 +51,8 @@ export async function primaryCheckout(
     resolve(gitDir) !== resolve(common)
   )
     throw new Error("Codex trust requires an ordinary primary checkout");
-  return primary;
+  const worktree = await git(context, ["--show-toplevel"]);
+  if (!isAbsolute(worktree))
+    throw new Error("Codex trust requires an ordinary task checkout");
+  return { primary, worktree: resolve(worktree) };
 }

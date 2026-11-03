@@ -73,6 +73,7 @@ await test(
       },
       { args: ["rev-parse", "--show-toplevel"], cwd: native.primary },
       { args: ["rev-parse", "--absolute-git-dir"], cwd: native.primary },
+      { args: ["rev-parse", "--show-toplevel"], cwd: context.cwd },
     ]);
     assert.equal(native.launches.length, 2);
     assert.deepEqual(bound.keys, []);
@@ -302,7 +303,7 @@ for (const layout of [
         return join(native.primary, ".git", "worktrees", "other");
       if (layout === "unrelated-root" && args.includes("--show-toplevel"))
         return dirname(native.primary);
-      return handleGit(args);
+      return handleGit(args, native.primary);
     };
     await assert.rejects(
       createEnhancement(boundHost().host, { cwd: process.cwd(), env: {} }, {}),

@@ -65,8 +65,12 @@ export async function nativeFixture(
     projects: { [primary]: { trust_level: "trusted" } },
   };
   const gitLaunches: { args: readonly string[]; cwd: unknown }[] = [];
-  let gitHandler = (args: readonly string[]) => {
-    if (args.includes("--show-toplevel")) return primary;
+  let gitHandler = (
+    args: readonly string[],
+    cwd: childProcess.SpawnOptions["cwd"],
+  ) => {
+    if (args.includes("--show-toplevel"))
+      return typeof cwd === "string" ? resolve(cwd) : primary;
     return join(primary, ".git");
   };
   let configHandler = (request: Request): unknown => {
@@ -74,7 +78,7 @@ export async function nativeFixture(
       return { config: configuration, origins: {}, layers: [] };
     assert.equal(request.params.keyPath, "projects");
     assert.equal(request.params.mergeStrategy, "upsert");
-    const projects = configuration.projects as Record<string, unknown>;
+    const projects = (configuration.projects ??= {}) as Record<string, unknown>;
     for (const [path, value] of Object.entries(
       request.params.value as Record<string, Record<string, unknown>>,
     ))
@@ -190,7 +194,7 @@ export async function nativeFixture(
         if (spawnGit) return spawnGit(command, args, options);
         queueMicrotask(() => {
           try {
-            child.stdout.end(`${gitHandler(args)}\n`);
+            child.stdout.end(`${gitHandler(args, options.cwd)}\n`);
             child.emit("close", 0);
           } catch (error) {
             child.emit("error", error);
