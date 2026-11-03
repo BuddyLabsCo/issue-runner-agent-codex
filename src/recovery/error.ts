@@ -139,10 +139,6 @@ export class ErrorRecovery {
       this.report(candidate, `recovery=error excluded=${excluded}`);
       candidate = undefined;
     }
-    if (candidate?.category === "missing-handoff" && this.actionRequired()) {
-      this.report(candidate, "ACTION REQUIRED!!!");
-      candidate = undefined;
-    }
     if (
       !candidate ||
       this.pending?.turn !== candidate.turn ||
@@ -164,6 +160,11 @@ export class ErrorRecovery {
       !this.stopped &&
       version === observation.version &&
       thread === observation.thread;
+    const actionRequired = this.actionRequired();
+    if (actionRequired) {
+      this.report(candidate, "ACTION REQUIRED!!!");
+      this.cancel();
+    }
     try {
       const present = await expectedFileExists(
         resolve(this.cwd, observation.expectedFile!),
@@ -171,12 +172,12 @@ export class ErrorRecovery {
       if (!current()) return;
       if (present) {
         this.attempts["missing-handoff"] = 0;
-        if (this.reported?.startsWith("missing-handoff:"))
+        if (!actionRequired && this.reported?.startsWith("missing-handoff:"))
           this.reported = undefined;
         this.cancel();
         return;
       }
-      this.consider(candidate);
+      if (!actionRequired) this.consider(candidate);
     } catch (error) {
       if (!current()) return;
       this.failure = { error };

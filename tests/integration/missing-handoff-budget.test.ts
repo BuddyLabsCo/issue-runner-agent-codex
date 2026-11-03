@@ -37,6 +37,64 @@ await test("file appearance resets even an exhausted missing-handoff budget whil
   assert.match(stderr.at(-2)!, /missing-handoff attempt=1\/1/);
 });
 
+await test("file appearance during human-action suppression resets the budget for later same-path continuation", async (t) => {
+  const { instance, state, native, bound, stderr, files, expectedFile } =
+    await recoveryFixture(t, { retryLimit: 1, handoffRecoveryDelaySeconds: 2 });
+  state.snapshot.turns[0]!.status = "completed";
+  await instance.startMonitoring("known");
+  await flush();
+  t.mock.timers.tick(2_000);
+  await flush();
+  assert.equal(bound.recoveries, 1);
+  assert.match(stderr.at(-1)!, /missing-handoff exhausted=1\/1/);
+
+  files.add(expectedFile);
+  state.snapshot.turns[0]!.id = "human-action";
+  state.snapshot.turns[0]!.items = [
+    {
+      id: "reply",
+      type: "agentMessage",
+      phase: "final_answer",
+      text: " \n[action required] Decide",
+    },
+  ];
+  native.notify("turn/completed", {
+    threadId: "known",
+    turn: state.snapshot.turns[0],
+  });
+  await flush();
+  native.notify("thread/status/changed", {
+    threadId: "known",
+    status: { type: "idle" },
+  });
+  await flush();
+  t.mock.timers.tick(20_000);
+  await flush();
+  assert.equal(bound.recoveries, 1);
+  assert.deepEqual(stderr.slice(2), [
+    "[codex] sessionref=known ACTION REQUIRED!!!\n",
+  ]);
+
+  files.delete(expectedFile);
+  instance.onAssignment(expectedFile);
+  state.snapshot.turns[0]!.id = "later-completion";
+  state.snapshot.turns[0]!.items = [
+    { id: "later-reply", type: "agentMessage", text: "Continuing delivery" },
+  ];
+  native.notify("turn/completed", {
+    threadId: "known",
+    turn: state.snapshot.turns[0],
+  });
+  await flush();
+  t.mock.timers.tick(1_999);
+  await flush();
+  assert.equal(bound.recoveries, 1);
+  t.mock.timers.tick(1);
+  await flush();
+  assert.equal(bound.recoveries, 2);
+  assert.match(stderr.at(-2)!, /missing-handoff attempt=1\/1/);
+});
+
 await test("exhausting either category leaves the other available and completed turns reset only error attempts", async (t) => {
   for (const first of ["failed", "completed"]) {
     await t.test(first, async (t) => {
