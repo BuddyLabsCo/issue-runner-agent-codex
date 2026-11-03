@@ -56,6 +56,23 @@ export function thread(id = "known", items: unknown[] = []) {
   };
 }
 
+export function hook(key = "new hook") {
+  return {
+    key,
+    currentHash: `sha256:${key}`,
+    enabled: true,
+    isManaged: false,
+    trustStatus: "untrusted",
+    handlerType: "command",
+    command: "fixture-hook",
+    eventName: "sessionStart",
+    source: "project",
+    sourcePath: join(process.cwd(), ".codex", "hooks.json"),
+    displayOrder: 0,
+    timeoutSec: 600,
+  };
+}
+
 export async function nativeFixture(
   t: TestContext,
   spawnGit?: typeof childProcess.spawn,
@@ -76,17 +93,48 @@ export async function nativeFixture(
   let configHandler = (request: Request): unknown => {
     if (request.method === "config/read")
       return { config: configuration, origins: {}, layers: [] };
-    assert.equal(request.params.keyPath, "projects");
+    assert.ok(
+      ["projects", "hooks.state"].includes(String(request.params.keyPath)),
+    );
     assert.equal(request.params.mergeStrategy, "upsert");
-    const projects = (configuration.projects ??= {}) as Record<string, unknown>;
+    const target =
+      request.params.keyPath === "projects"
+        ? configuration
+        : ((configuration.hooks ??= {}) as Record<string, unknown>);
+    const field = request.params.keyPath === "projects" ? "projects" : "state";
+    const entries = (target[field] ??= {}) as Record<string, unknown>;
     for (const [path, value] of Object.entries(
       request.params.value as Record<string, Record<string, unknown>>,
     ))
-      projects[path] = { ...(projects[path] as object), ...value };
+      entries[path] = { ...(entries[path] as object), ...value };
     return {
       status: "ok",
       version: "written",
       filePath: join(primary, "config.toml"),
+    };
+  };
+  const hooks: ReturnType<typeof hook>[] = [];
+  let hooksHandler = (request: Request): unknown => {
+    const state = (
+      configuration.hooks as
+        { state?: Record<string, { trusted_hash?: string }> } | undefined
+    )?.state;
+    return {
+      data: [
+        {
+          cwd: (request.params.cwds as string[])[0],
+          hooks: hooks.map((hook) => ({
+            ...hook,
+            trustStatus:
+              !hook.isManaged &&
+              state?.[hook.key]?.trusted_hash === hook.currentHash
+                ? "trusted"
+                : hook.trustStatus,
+          })),
+          warnings: [],
+          errors: [],
+        },
+      ],
     };
   };
   const requests: Request[] = [];
@@ -150,7 +198,9 @@ export async function nativeFixture(
         .then(() =>
           request.method.startsWith("config/")
             ? configHandler(request)
-            : handler(request),
+            : request.method === "hooks/list"
+              ? hooksHandler(request)
+              : handler(request),
         )
         .then(
           (result) => {
@@ -236,6 +286,13 @@ export async function nativeFixture(
   return {
     primary,
     configuration,
+    hooks,
+    get hooksHandler() {
+      return hooksHandler;
+    },
+    set hooksHandler(value: typeof hooksHandler) {
+      hooksHandler = value;
+    },
     gitLaunches,
     get gitHandler() {
       return gitHandler;
