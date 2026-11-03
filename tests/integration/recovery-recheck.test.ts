@@ -214,3 +214,80 @@ await test("stop awaits a submitted Host request and does not schedule more reco
   await flush();
   assert.equal(bound.recoveries, 1);
 });
+
+await test("renewed eligibility starts its delay while a canceled final check is outstanding", async (t) => {
+  for (const boundary of ["native", "file"]) {
+    await t.test(boundary, async (t) => {
+      const { instance, native, state, bound, stderr } =
+        await recoveryFixture(t);
+      let finishRecovery!: () => void;
+      const recovery = new Promise<void>((resolve) => {
+        finishRecovery = resolve;
+      });
+      const request = bound.host.requestRecovery.bind(bound.host);
+      bound.host.requestRecovery = async () => {
+        await request();
+        await recovery;
+      };
+      await instance.startMonitoring("known");
+      let release!: () => void;
+      const checked = new Promise<void>((received) => {
+        if (boundary === "native") {
+          let reads = 0;
+          native.handler = () => {
+            if (reads++ > 0) return { thread: state.snapshot };
+            return new Promise((resolve) => {
+              release = () => resolve({ thread: failedThread() });
+              received();
+            });
+          };
+        } else {
+          let checks = 0;
+          t.mock.method(fs, "access", () => {
+            if (checks++ > 0)
+              return Promise.reject(
+                Object.assign(new Error("absent"), { code: "ENOENT" }),
+              );
+            return new Promise<void>((resolve) => {
+              release = resolve;
+              received();
+            });
+          });
+        }
+      });
+      t.mock.timers.tick(10_000);
+      await checked;
+      try {
+        native.notify("turn/started", {
+          threadId: "known",
+          turn: { id: "later", status: "inProgress", items: [] },
+        });
+        state.snapshot.turns[0]!.id = "later";
+        native.notify("turn/completed", {
+          threadId: "known",
+          turn: state.snapshot.turns[0],
+        });
+        await flush();
+        t.mock.timers.tick(9_999);
+        await flush();
+        assert.equal(bound.recoveries, 0);
+        t.mock.timers.tick(1);
+        await flush();
+        assert.equal(bound.recoveries, 1);
+        assert.deepEqual(stderr, [
+          "[codex] sessionref=known recovery=error attempt=1/3\n",
+        ]);
+        release();
+        await flush();
+        t.mock.timers.tick(20_000);
+        await flush();
+        assert.equal(bound.recoveries, 1);
+      } finally {
+        release();
+        finishRecovery();
+        await flush();
+      }
+      assert.equal(bound.recoveries, 1);
+    });
+  }
+});

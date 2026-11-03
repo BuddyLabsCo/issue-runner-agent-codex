@@ -25,6 +25,7 @@ function excludedError(error: unknown): string | undefined {
 interface Pending {
   turn: string;
   timer?: ReturnType<typeof setTimeout>;
+  work?: Promise<void>;
 }
 
 export class ErrorRecovery {
@@ -35,7 +36,7 @@ export class ErrorRecovery {
   private attempts = 0;
   private assignment = 0;
   private pending: Pending | undefined;
-  private running: Promise<void> | undefined;
+  private submission: Promise<void> | undefined;
   private failure: { error: unknown } | undefined;
   private stopped = false;
   private reported: string | undefined;
@@ -118,7 +119,13 @@ export class ErrorRecovery {
       }
       return;
     }
-    if (this.stopped || this.failure || !turn || this.pending || this.running)
+    if (
+      this.stopped ||
+      this.failure ||
+      !turn ||
+      this.pending ||
+      this.submission
+    )
       return;
     this.schedule(turn);
   }
@@ -140,7 +147,7 @@ export class ErrorRecovery {
           return;
         }
         let reevaluate = false;
-        this.running = this.submit(pending)
+        const work = this.submit(pending)
           .then((retry) => {
             reevaluate = retry;
           })
@@ -148,9 +155,10 @@ export class ErrorRecovery {
             this.failure = { error };
           })
           .finally(() => {
-            this.running = undefined;
+            if (this.submission === work) this.submission = undefined;
             if (reevaluate) this.evaluate();
           });
+        pending.work = work;
       }, seconds * 1_000);
     };
     schedule();
@@ -177,6 +185,7 @@ export class ErrorRecovery {
     )
       return true;
     if (present) return false;
+    this.submission = pending.work;
     this.attempts++;
     diagnostic(
       this.observation.sessionref,
@@ -194,7 +203,7 @@ export class ErrorRecovery {
   }
 
   async finish(): Promise<void> {
-    await this.running;
+    await this.submission;
     this.check();
   }
 }
