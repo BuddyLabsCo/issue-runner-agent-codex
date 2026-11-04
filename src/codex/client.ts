@@ -233,8 +233,13 @@ export async function connectNative(
     starter.stdout.resume();
     starter.stderr.resume();
     const timer = setTimeout(() => {
-      starter.kill();
+      // Release can emit error or close synchronously; preserve the timeout first.
       reject(new Error("Codex daemon startup timed out"));
+      try {
+        if (!starter.kill()) throw new Error("Codex starter release failed");
+      } catch {
+        diagnostic(undefined, "initialization cleanup failed");
+      }
     }, requestTimeout);
     starter.once("error", () => {
       clearTimeout(timer);
