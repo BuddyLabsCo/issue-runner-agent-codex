@@ -1,6 +1,7 @@
 import type { EnhancementHost } from "issue-runner-core/terminal";
 import { Observation, threadState } from "../monitor/state.ts";
 import { NativeClient, object } from "../codex/client.ts";
+import { diagnostic } from "../diagnostics.ts";
 
 function containsMarker(
   items: Record<string, unknown>[],
@@ -199,5 +200,11 @@ export class Readiness {
 
   stop(): void {
     for (const cancel of this.cancellations) cancel();
+  }
+
+  async finish(): Promise<void> {
+    await this.round?.catch(() => {
+      diagnostic(this.observation.sessionref, "readiness input failed");
+    });
   }
 }

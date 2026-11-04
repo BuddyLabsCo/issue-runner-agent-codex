@@ -118,6 +118,7 @@ export class ErrorRecovery {
   }
 
   private evaluate(): void {
+    if (this.stopped) return;
     const observation = this.observation;
     if (this.assignment !== observation.assignmentVersion) {
       this.assignment = observation.assignmentVersion;
@@ -181,6 +182,7 @@ export class ErrorRecovery {
     } catch (error) {
       if (!current()) return;
       this.failure = { error };
+      diagnostic(this.observation.sessionref, "recovery operation failed");
       this.cancel();
     }
   }
@@ -223,6 +225,10 @@ export class ErrorRecovery {
           })
           .catch((error: unknown) => {
             this.failure = { error };
+            diagnostic(
+              this.observation.sessionref,
+              "recovery operation failed",
+            );
           })
           .finally(() => {
             if (this.submission === work) this.submission = undefined;
@@ -282,6 +288,5 @@ export class ErrorRecovery {
 
   async finish(): Promise<void> {
     await this.submission;
-    this.check();
   }
 }

@@ -59,7 +59,7 @@ await test("an excluded error discovered only by the final read cancels recovery
   ]);
 });
 
-await test("ordinary synchronous and asynchronous Host errors propagate unchanged through lifecycle and stop", async (t) => {
+await test("ordinary Host errors remain diagnosable without failing cleanup", async (t) => {
   for (const synchronous of [true, false]) {
     await t.test(String(synchronous), async (t) => {
       const native = await nativeFixture(t);
@@ -97,8 +97,8 @@ await test("ordinary synchronous and asynchronous Host errors propagate unchange
         () => instance.onAssignment("next.json"),
         (error) => error === failure,
       );
-      await assert.rejects(instance.stop(), (error) => error === failure);
-      await assert.rejects(instance.stop(), (error) => error === failure);
+      await instance.stop();
+      await instance.stop();
       await flush();
       assert.equal(native.sockets[0]!.readyState, 3);
     });
@@ -137,11 +137,15 @@ await test("observation and file-read errors propagate without being retried as 
       t.mock.timers.tick(1_000_000);
       await flush();
       assert.equal(bound.recoveries, 0);
-      assert.deepEqual(stderr, []);
+      assert.deepEqual(stderr, [
+        "[codex] sessionref=known recovery operation failed\n",
+      ]);
       await assert.rejects(
-        instance.stop(),
+        instance.waitUntilReady(),
         source === "read" ? /RPC request failed/ : (error) => error === failure,
       );
+      await instance.stop();
+      await instance.stop();
       await flush();
       assert.equal(native.sockets[0]!.readyState, 3);
     });
