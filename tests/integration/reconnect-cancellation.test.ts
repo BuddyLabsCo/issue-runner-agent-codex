@@ -3,6 +3,53 @@ import { test } from "node:test";
 import { createEnhancement } from "../../src/index.ts";
 import { boundHost, flush, nativeFixture, thread } from "../fixtures/native.ts";
 
+await test("public binding cannot bypass pending reconnect initialization", async (t) => {
+  for (const ref of [undefined, "known"]) {
+    await t.test(ref ?? "unbound", async (t) => {
+      const native = await nativeFixture(t);
+      const bound = boundHost();
+      const instance = await createEnhancement(
+        bound.host,
+        { cwd: process.cwd(), env: {} },
+        { retryLimit: 0 },
+      );
+      t.after(() => instance.stop());
+      await instance.startMonitoring(ref);
+      t.mock.timers.enable({ apis: ["setTimeout"] });
+      native.sockets[0]!.close();
+      await flush();
+      const before = native.requests.length;
+      let release!: (value: unknown) => void;
+      const initializing = new Promise<void>((received) => {
+        native.handler = (request) => {
+          if (request.method !== "initialize") return { thread: thread() };
+          received();
+          return new Promise((resolve) => {
+            release = resolve;
+          });
+        };
+      });
+      t.mock.timers.tick(10_000);
+      await initializing;
+      await assert.rejects(instance.startMonitoring("known"), /unavailable/);
+      await assert.rejects(instance.waitUntilReady(), /unavailable/);
+      assert.deepEqual(
+        native.requests.slice(before).map(({ method }) => method),
+        ["initialize"],
+      );
+      assert.deepEqual(bound.inputs, []);
+      release({});
+      await flush();
+      await instance.startMonitoring("known");
+      assert.deepEqual(
+        native.requests.slice(before).map(({ method }) => method),
+        ["initialize", "initialized", "thread/resume", "thread/read"],
+      );
+      await instance.stop();
+    });
+  }
+});
+
 await test("stop cancels each in-flight reattachment stage and ignores late responses", async (t) => {
   for (const stage of ["initialize", "thread/resume", "thread/read"]) {
     await t.test(stage, async (t) => {

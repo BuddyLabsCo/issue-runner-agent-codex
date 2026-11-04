@@ -67,6 +67,7 @@ export class Observation {
       if (this.stopped || !this.available) return;
       this.available = false;
       this.initialized = false;
+      this.binding = undefined;
       this.willRetry = undefined;
       this.invalidate();
       diagnostic(this.sessionref, "observation disconnected");
@@ -91,8 +92,8 @@ export class Observation {
       if (this.stopped) return;
       this.latestStatus = undefined;
       this.willRetry = undefined;
-      this.binding = undefined;
-      if (this.sessionref) await this.bind(this.sessionref);
+      this.binding = this.sessionref ? this.attach(this.sessionref) : undefined;
+      if (this.binding) await this.binding;
       else {
         this.available = true;
         this.invalidate();
@@ -101,6 +102,7 @@ export class Observation {
       if (!this.stopped) {
         this.available = false;
         this.initialized = false;
+        this.binding = undefined;
         this.invalidate();
         diagnostic(this.sessionref, "observation reconnect failed");
       }
@@ -127,7 +129,7 @@ export class Observation {
     ref: string,
     items: Record<string, unknown>[] = [],
   ): Promise<void> {
-    if (!this.available && !this.reconnecting)
+    if (!this.available && !this.binding)
       throw new Error("Codex observation unavailable");
     if (this.sessionref !== undefined && this.sessionref !== ref)
       throw new Error("Codex session is already bound");
