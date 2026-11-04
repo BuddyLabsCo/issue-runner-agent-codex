@@ -205,7 +205,7 @@ await test("unbound instances never adopt notification-only evidence and stop in
   await assert.rejects(instance.waitUntilReady(), /stopped/);
 });
 
-await test("disconnect rejects pending readiness, is redacted on stderr, and never reconnects or recovers", async (t) => {
+await test("disconnect rejects pending readiness, is redacted on stderr, and stop cancels reconnection", async (t) => {
   const native = await nativeFixture(t);
   const stderr: string[] = [];
   t.mock.method(process.stderr, "write", (value: string) => {
@@ -228,6 +228,7 @@ await test("disconnect rejects pending readiness, is redacted on stderr, and nev
     "credentials and RPC payload must not be logged",
   );
   await waiting;
+  await instance.stop();
   t.mock.timers.tick(300_000);
   await flush();
   assert.deepEqual(stderr, [

@@ -81,7 +81,11 @@ await test("stop and loss of observation cancel pending recovery and preserve th
         stderr.every((line) => line.includes("observation disconnected")),
       );
       assert.ok(native.launches.every(({ args }) => !args.includes("stop")));
-      assert.equal(native.launches.length, 2);
+      assert.equal(native.launches.length, trigger === "stop" ? 2 : 3);
+      assert.equal(
+        native.launches.filter(({ args }) => args.includes("daemon")).length,
+        1,
+      );
     });
   }
 });

@@ -31,13 +31,20 @@ export class NativeClient {
       timer: ReturnType<typeof setTimeout>;
     }
   >();
-  private readonly proxy;
-  private readonly stream;
-  private readonly socket;
+  private readonly context: EnhancementContext;
+  private proxy!: childProcess.ChildProcessWithoutNullStreams;
+  private stream!: Duplex;
+  private socket!: WebSocket;
   private stopped = false;
-  private readonly exited: Promise<void>;
+  private exited!: Promise<void>;
 
   constructor(context: EnhancementContext) {
+    this.context = context;
+    this.open();
+  }
+
+  private open(): void {
+    const context = this.context;
     this.proxy = childProcess.spawn("codex", ["app-server", "proxy"], {
       cwd: context.cwd,
       env: { ...process.env, ...context.env },
@@ -56,13 +63,18 @@ export class NativeClient {
       handshakeTimeout: requestTimeout,
       perMessageDeflate: false,
     });
+    const socket = this.socket;
+    const disconnected = () => {
+      if (socket === this.socket) this.disconnect();
+    };
     this.proxy.stderr.resume();
-    this.proxy.on("error", () => this.disconnect());
-    this.proxy.on("close", () => this.disconnect());
-    this.stream.on("error", () => this.disconnect());
-    this.socket.on("error", () => this.disconnect());
-    this.socket.on("close", () => this.disconnect());
+    this.proxy.on("error", disconnected);
+    this.proxy.on("close", disconnected);
+    this.stream.on("error", disconnected);
+    socket.on("error", disconnected);
+    socket.on("close", disconnected);
     this.socket.on("message", (data) => {
+      if (socket !== this.socket || !this.available || this.stopped) return;
       try {
         if (!Buffer.isBuffer(data)) throw new Error("Invalid Codex frame");
         const message = object(JSON.parse(data.toString()));
@@ -93,6 +105,7 @@ export class NativeClient {
   }
 
   async initialize(): Promise<void> {
+    const socket = this.socket;
     await new Promise<void>((resolve, reject) => {
       const opened = () => {
         cleanup();
@@ -103,18 +116,34 @@ export class NativeClient {
         reject(new Error("Codex proxy connection failed"));
       };
       const cleanup = () => {
-        this.socket.off("open", opened);
+        socket.off("open", opened);
+        socket.off("close", failed);
         this.disconnections.delete(failed);
       };
       this.disconnections.add(failed);
-      this.socket.once("open", opened);
-      if (!this.available) failed();
+      socket.once("open", opened);
+      socket.once("close", failed);
+      if (!this.available || this.stopped) failed();
     });
     await this.request("initialize", {
       clientInfo: { name: "issue-runner-agent-codex", version: "0.0.0-dev.1" },
       capabilities: { experimentalApi: false, requestAttestation: false },
     });
     this.socket.send(JSON.stringify({ method: "initialized" }));
+  }
+
+  async reconnect(): Promise<void> {
+    await this.release();
+    if (this.stopped) throw new Error("Codex enhancement stopped");
+    this.available = true;
+    this.open();
+    try {
+      await this.initialize();
+    } catch (error) {
+      this.disconnect();
+      await this.release();
+      throw error;
+    }
   }
 
   request(method: string, params: Record<string, unknown>): Promise<unknown> {
@@ -127,8 +156,9 @@ export class NativeClient {
         reject(new Error("Codex RPC request timed out"));
       }, requestTimeout);
       this.pending.set(id, { resolve, reject, timer });
-      this.socket.send(JSON.stringify({ id, method, params }), (error) => {
-        if (error) this.disconnect();
+      const socket = this.socket;
+      socket.send(JSON.stringify({ id, method, params }), (error) => {
+        if (error && socket === this.socket) this.disconnect();
       });
     });
   }
@@ -150,6 +180,10 @@ export class NativeClient {
     this.disconnect();
     this.notifications.clear();
     this.disconnections.clear();
+    return this.release();
+  }
+
+  private release(): Promise<void> {
     this.socket.terminate();
     this.stream.destroy();
     this.proxy.kill();

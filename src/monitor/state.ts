@@ -51,6 +51,8 @@ export class Observation {
   private latestStatus: Record<string, unknown> | undefined;
   private binding: Promise<void> | undefined;
   private stopped = false;
+  private reconnecting = false;
+  private reconnectTimer: ReturnType<typeof setTimeout> | undefined;
   private readonly notification;
   private readonly connectionLost;
   private readonly markerItems: Record<string, unknown>[] = [];
@@ -62,14 +64,52 @@ export class Observation {
     this.notification = (notification: Notification) =>
       this.observe(notification);
     this.connectionLost = () => {
+      if (this.stopped || !this.available) return;
       this.available = false;
       this.initialized = false;
+      this.binding = undefined;
       this.willRetry = undefined;
       this.invalidate();
       diagnostic(this.sessionref, "observation disconnected");
+      this.scheduleReconnect();
     };
     client.notifications.add(this.notification);
     client.disconnections.add(this.connectionLost);
+  }
+
+  private scheduleReconnect(): void {
+    if (this.stopped || this.reconnecting || this.reconnectTimer) return;
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = undefined;
+      void this.reconnect();
+    }, 10_000);
+  }
+
+  private async reconnect(): Promise<void> {
+    this.reconnecting = true;
+    try {
+      await this.client.reconnect();
+      if (this.stopped) return;
+      this.latestStatus = undefined;
+      this.willRetry = undefined;
+      this.binding = this.sessionref ? this.attach(this.sessionref) : undefined;
+      if (this.binding) await this.binding;
+      else {
+        this.available = true;
+        this.invalidate();
+      }
+    } catch {
+      if (!this.stopped) {
+        this.available = false;
+        this.initialized = false;
+        this.binding = undefined;
+        this.invalidate();
+        diagnostic(this.sessionref, "observation reconnect failed");
+      }
+    } finally {
+      this.reconnecting = false;
+      if (!this.stopped && !this.available) this.scheduleReconnect();
+    }
   }
 
   private invalidate(invalidateSnapshot = true): void {
@@ -89,19 +129,13 @@ export class Observation {
     ref: string,
     items: Record<string, unknown>[] = [],
   ): Promise<void> {
+    if (!this.available && !this.binding)
+      throw new Error("Codex observation unavailable");
     if (this.sessionref !== undefined && this.sessionref !== ref)
       throw new Error("Codex session is already bound");
     if (this.binding) return this.binding;
     this.sessionref = ref;
-    // Native resume attaches this connection's listener without sending a business turn.
-    this.binding = this.client
-      .request("thread/resume", { threadId: ref, excludeTurns: true })
-      .then(() => this.refresh())
-      .then(() => {
-        if (this.stopped || !this.available) return;
-        this.initialized = true;
-        this.invalidate(false);
-      });
+    this.binding = this.attach(ref);
     // Publish evidence before initialization finishes so readiness stops new input.
     this.markerItems.push(...items);
     this.invalidate(false);
@@ -113,9 +147,30 @@ export class Observation {
     }
   }
 
+  private async attach(ref: string): Promise<void> {
+    // Native resume attaches this connection's listener without sending a business turn.
+    await this.client.request("thread/resume", {
+      threadId: ref,
+      excludeTurns: true,
+    });
+    while (!this.stopped) {
+      const version = this.snapshotVersion;
+      await this.refresh();
+      if (this.stopped) return;
+      if (!this.client.available)
+        throw new Error("Codex observation unavailable");
+      // Reconnection must reconcile history superseded by live notifications.
+      if (this.reconnecting && version !== this.snapshotVersion) continue;
+      this.available = true;
+      this.initialized = true;
+      this.invalidate(false);
+      return;
+    }
+  }
+
   async refresh(): Promise<void> {
     const ref = this.sessionref;
-    if (!ref || this.stopped || !this.available) return;
+    if (!ref || this.stopped || !this.client.available) return;
     const version = this.snapshotVersion;
     const status = this.latestStatus;
     const result = threadState(
@@ -125,7 +180,11 @@ export class Observation {
       }),
       ref,
     );
-    if (this.stopped || !this.available || version !== this.snapshotVersion)
+    if (
+      this.stopped ||
+      !this.client.available ||
+      version !== this.snapshotVersion
+    )
       return;
     if (this.latestStatus && status !== this.latestStatus)
       result.status = this.latestStatus;
@@ -143,7 +202,7 @@ export class Observation {
   }
 
   private observe({ method, params }: Notification): void {
-    if (this.stopped || !this.available) return;
+    if (this.stopped || (!this.available && !this.reconnecting)) return;
     if (!this.sessionref) {
       if (
         [
@@ -213,6 +272,7 @@ export class Observation {
 
   stop(): void {
     this.stopped = true;
+    clearTimeout(this.reconnectTimer);
     this.available = false;
     this.initialized = false;
     this.invalidate();
