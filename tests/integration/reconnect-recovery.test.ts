@@ -116,15 +116,74 @@ await test("reconnection retains each category's spent budget and the same assig
       await refreshed;
       await instance.startMonitoring("known");
       await flush();
-      instance.onAssignment(expectedFile);
+      instance.onAssignment({ id: "assignment-1", expectedFile });
       t.mock.timers.tick(1_000);
       await flush();
       assert.equal(bound.recoveries, 1);
-      instance.onAssignment("replacement.json");
+      instance.onAssignment({
+        id: "replacement.json",
+        expectedFile: "replacement.json",
+      });
       await flush();
       t.mock.timers.tick(1_000);
       await flush();
       assert.equal(bound.recoveries, 2);
     });
   }
+});
+
+await test("same-path Assignment replacement during reattachment requires fresh native state before recovery", async (t) => {
+  const { instance, native, state, bound, expectedFile } =
+    await recoveryFixture(t, {
+      retryLimit: 1,
+      retryDelay: [1],
+    });
+  await instance.startMonitoring("known");
+  t.mock.timers.tick(1_000);
+  await flush();
+  assert.deepEqual(bound.recoveryIds, ["assignment-1"]);
+  native.sockets[0]!.close();
+  await flush();
+  let releaseOld!: () => void;
+  let releaseFresh!: () => void;
+  let freshStarted!: () => void;
+  const freshRead = new Promise<void>((resolve) => {
+    freshStarted = resolve;
+  });
+  const oldRead = new Promise<void>((received) => {
+    let reads = 0;
+    native.handler = (request) => {
+      if (request.method !== "thread/read") return {};
+      if (reads++ === 0) {
+        received();
+        return new Promise((resolve) => {
+          releaseOld = () => resolve({ thread: state.snapshot });
+        });
+      }
+      if (reads === 2) {
+        freshStarted();
+        return new Promise((resolve) => {
+          releaseFresh = () => resolve({ thread: state.snapshot });
+        });
+      }
+      return { thread: state.snapshot };
+    };
+  });
+  t.mock.timers.tick(10_000);
+  await oldRead;
+  instance.onAssignment({ id: "assignment-2", expectedFile });
+  releaseOld();
+  await freshRead;
+  t.mock.timers.tick(1_000);
+  await flush();
+  assert.deepEqual(bound.recoveryIds, ["assignment-1"]);
+  releaseFresh();
+  await instance.startMonitoring("known");
+  await flush();
+  t.mock.timers.tick(999);
+  await flush();
+  assert.deepEqual(bound.recoveryIds, ["assignment-1"]);
+  t.mock.timers.tick(1);
+  await flush();
+  assert.deepEqual(bound.recoveryIds, ["assignment-1", "assignment-2"]);
 });

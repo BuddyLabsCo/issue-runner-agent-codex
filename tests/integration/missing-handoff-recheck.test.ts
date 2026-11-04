@@ -2,7 +2,12 @@ import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import { test } from "node:test";
 import { createEnhancement } from "../../src/index.ts";
-import { boundHost, flush, nativeFixture, thread } from "../fixtures/native.ts";
+import {
+  boundCapabilities,
+  flush,
+  nativeFixture,
+  thread,
+} from "../fixtures/native.ts";
 import { recoveryFixture } from "../fixtures/recovery.ts";
 
 await test("a full human-action reply discovered by the final snapshot suppresses input; a later turn uses its own output", async (t) => {
@@ -77,7 +82,7 @@ await test("missing-handoff file and Host failures propagate through the lifecyc
   for (const source of ["file", "host"]) {
     await t.test(source, async (t) => {
       const native = await nativeFixture(t);
-      const bound = boundHost();
+      const bound = boundCapabilities();
       const failure = Object.assign(new Error("boundary failure"), {
         code: "EACCES",
       });
@@ -94,18 +99,22 @@ await test("missing-handoff file and Host failures propagate through the lifecyc
             : Object.assign(new Error("absent"), { code: "ENOENT" }),
         ),
       );
-      const request = bound.host.requestRecovery.bind(bound.host);
-      bound.host.requestRecovery = async () => {
-        await request();
+      const request = bound.recovery.request;
+      bound.recovery.request = async (id) => {
+        await request(id);
         throw failure;
       };
       const instance = await createEnhancement(
-        bound.host,
+        bound.io,
+        bound.requestRecovery,
         { cwd: process.cwd(), env: {} },
         { handoffRecoveryDelaySeconds: 2 },
       );
       t.mock.timers.enable({ apis: ["setTimeout"] });
-      instance.onAssignment("handoff.json");
+      instance.onAssignment({
+        id: "handoff.json",
+        expectedFile: "handoff.json",
+      });
       await instance.startMonitoring("known");
       await flush();
       t.mock.timers.tick(2_000);
@@ -169,17 +178,16 @@ await test("new turn, assignment, action-required output, disconnect and stop in
   for (const trigger of [
     "turn",
     "assignment",
+    "same-path",
     "action",
     "disconnect",
     "stop",
   ]) {
     await t.test(trigger, async (t) => {
-      const { instance, state, native, bound, stderr } = await recoveryFixture(
-        t,
-        {
+      const { instance, state, native, bound, stderr, expectedFile } =
+        await recoveryFixture(t, {
           handoffRecoveryDelaySeconds: 2,
-        },
-      );
+        });
       state.snapshot.turns[0]!.status = "completed";
       await instance.startMonitoring("known");
       await flush();
@@ -194,7 +202,10 @@ await test("new turn, assignment, action-required output, disconnect and stop in
       t.mock.timers.tick(2_000);
       await reading;
       let stopping: Promise<void> | undefined;
-      if (trigger === "assignment") instance.onAssignment("new.json");
+      if (trigger === "assignment")
+        instance.onAssignment({ id: "new.json", expectedFile: "new.json" });
+      else if (trigger === "same-path")
+        instance.onAssignment({ id: "assignment-2", expectedFile });
       else if (trigger === "turn")
         native.notify("turn/started", {
           threadId: "known",
@@ -224,11 +235,12 @@ await test("new turn, assignment, action-required output, disconnect and stop in
 });
 
 await test("assignment, human action and stop during outstanding file checks cannot send stale input", async (t) => {
-  for (const trigger of ["assignment", "action", "stop"]) {
+  for (const trigger of ["assignment", "same-path", "action", "stop"]) {
     await t.test(trigger, async (t) => {
-      const { instance, state, native, bound } = await recoveryFixture(t, {
-        handoffRecoveryDelaySeconds: 2,
-      });
+      const { instance, state, native, bound, expectedFile } =
+        await recoveryFixture(t, {
+          handoffRecoveryDelaySeconds: 2,
+        });
       state.snapshot.turns[0]!.status = "completed";
       await instance.startMonitoring("known");
       await flush();
@@ -248,7 +260,13 @@ await test("assignment, human action and stop during outstanding file checks can
       await checking;
       await flush();
       let stopping: Promise<void> | undefined;
-      if (trigger === "assignment") instance.onAssignment("replacement.json");
+      if (trigger === "assignment")
+        instance.onAssignment({
+          id: "replacement.json",
+          expectedFile: "replacement.json",
+        });
+      else if (trigger === "same-path")
+        instance.onAssignment({ id: "assignment-2", expectedFile });
       else if (trigger === "action")
         native.notify("item/completed", {
           threadId: "known",

@@ -4,13 +4,26 @@ import { flush } from "../fixtures/native.ts";
 import { failedThread, recoveryFixture } from "../fixtures/recovery.ts";
 
 await test("turn start, assignment replacement, native retry and inactive-to-active changes cancel without advancing attempts", async (t) => {
-  for (const trigger of ["turn", "assignment", "retry", "active", "excluded"]) {
+  for (const trigger of [
+    "turn",
+    "assignment",
+    "same-path",
+    "retry",
+    "active",
+    "excluded",
+  ]) {
     await t.test(trigger, async (t) => {
-      const { instance, native, state, bound, stderr } =
+      const { instance, native, state, bound, stderr, expectedFile } =
         await recoveryFixture(t);
       await instance.startMonitoring("known");
       t.mock.timers.tick(9_000);
-      if (trigger === "assignment") instance.onAssignment("new-file.json");
+      if (trigger === "assignment")
+        instance.onAssignment({
+          id: "new-file.json",
+          expectedFile: "new-file.json",
+        });
+      else if (trigger === "same-path")
+        instance.onAssignment({ id: "assignment-2", expectedFile });
       else if (trigger === "turn")
         native.notify("turn/started", {
           threadId: "known",
@@ -36,7 +49,7 @@ await test("turn start, assignment replacement, native retry and inactive-to-act
       t.mock.timers.tick(1_000);
       await flush();
       assert.equal(bound.recoveries, 0);
-      if (trigger !== "assignment") {
+      if (trigger !== "assignment" && trigger !== "same-path") {
         state.snapshot = failedThread();
         state.snapshot.turns[0]!.id = "later-failure";
         native.notify("turn/completed", {
@@ -49,7 +62,9 @@ await test("turn start, assignment replacement, native retry and inactive-to-act
         });
         await flush();
       }
-      t.mock.timers.tick(trigger === "assignment" ? 8_999 : 9_999);
+      t.mock.timers.tick(
+        trigger === "assignment" || trigger === "same-path" ? 8_999 : 9_999,
+      );
       await flush();
       assert.equal(bound.recoveries, 0);
       t.mock.timers.tick(1);
@@ -144,9 +159,16 @@ await test("file appearance before the final check suppresses submission without
 });
 
 await test("changes during an outstanding final read discard its result before reading or submitting stale input", async (t) => {
-  for (const trigger of ["assignment", "turn", "stop", "retry", "excluded"]) {
+  for (const trigger of [
+    "assignment",
+    "same-path",
+    "turn",
+    "stop",
+    "retry",
+    "excluded",
+  ]) {
     await t.test(trigger, async (t) => {
-      const { instance, native, state, bound, fileReads } =
+      const { instance, native, state, bound, fileReads, expectedFile } =
         await recoveryFixture(t);
       await instance.startMonitoring("known");
       let release!: (value: unknown) => void;
@@ -162,7 +184,13 @@ await test("changes during an outstanding final read discard its result before r
       t.mock.timers.tick(10_000);
       await read;
       let stopped: Promise<void> | undefined;
-      if (trigger === "assignment") instance.onAssignment("replacement.json");
+      if (trigger === "assignment")
+        instance.onAssignment({
+          id: "replacement.json",
+          expectedFile: "replacement.json",
+        });
+      else if (trigger === "same-path")
+        instance.onAssignment({ id: "assignment-2", expectedFile });
       else if (trigger === "turn")
         native.notify("turn/started", {
           threadId: "known",
@@ -186,12 +214,17 @@ await test("changes during an outstanding final read discard its result before r
       await flush();
       assert.equal(bound.recoveries, 0);
       assert.deepEqual(fileReads, []);
-      if (trigger === "assignment") {
+      if (trigger === "assignment" || trigger === "same-path") {
         native.handler = () => ({ thread: state.snapshot });
         t.mock.timers.tick(10_000);
         await flush();
         assert.equal(bound.recoveries, 1);
-        assert.match(fileReads[0]!, /replacement\.json$/);
+        assert.equal(
+          bound.recoveryIds[0],
+          trigger === "same-path" ? "assignment-2" : "replacement.json",
+        );
+        if (trigger === "same-path") assert.equal(fileReads[0], expectedFile);
+        else assert.match(fileReads[0]!, /replacement\.json$/);
       }
     });
   }

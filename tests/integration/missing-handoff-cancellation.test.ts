@@ -55,7 +55,10 @@ await test("turn start, changed assignment, active status, file appearance, huma
           turn: { id: "new", status: "inProgress", items: [] },
         });
       else if (trigger === "assignment")
-        instance.onAssignment("replacement.json");
+        instance.onAssignment({
+          id: "replacement.json",
+          expectedFile: "replacement.json",
+        });
       else if (trigger === "active")
         native.notify("thread/status/changed", {
           threadId: "known",

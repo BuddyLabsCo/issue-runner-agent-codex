@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { dirname, join, resolve } from "node:path";
 import { test } from "node:test";
 import { createEnhancement } from "../../src/index.ts";
-import { boundHost, flush, nativeFixture } from "../fixtures/native.ts";
+import { boundCapabilities, flush, nativeFixture } from "../fixtures/native.ts";
 
 await test(
   "factory trusts the primary checkout and awaits effective readback before terminal startup",
@@ -11,7 +11,7 @@ await test(
     const native = await nativeFixture(t);
     native.configuration.projects = { unrelated: { trust_level: "untrusted" } };
     native.configuration.model = "preserved";
-    const bound = boundHost();
+    const bound = boundCapabilities();
     const context = {
       cwd: join(native.primary, "linked task"),
       env: { CODEX_HOME: "injected-home" },
@@ -37,12 +37,15 @@ await test(
       };
     });
     let returned = false;
-    const creating = createEnhancement(bound.host, context, {}).then(
-      (instance) => {
-        returned = true;
-        return instance;
-      },
-    );
+    const creating = createEnhancement(
+      bound.io,
+      bound.requestRecovery,
+      context,
+      {},
+    ).then((instance) => {
+      returned = true;
+      return instance;
+    });
     await reading;
     assert.ok(
       native.requests.some(({ method }) => method === "config/value/write"),
@@ -105,7 +108,12 @@ await test("factory rejects a managed override even when readback reports truste
     return result;
   };
   await assert.rejects(
-    createEnhancement(boundHost().host, { cwd: process.cwd(), env: {} }, {}),
+    createEnhancement(
+      boundCapabilities().io,
+      boundCapabilities().requestRecovery,
+      { cwd: process.cwd(), env: {} },
+      {},
+    ),
     /trust.*overridden/,
   );
   await flush();
@@ -127,7 +135,12 @@ await test("factory retains initialization configuration warnings and rejects ev
     return {};
   };
   await assert.rejects(
-    createEnhancement(boundHost().host, { cwd: process.cwd(), env: {} }, {}),
+    createEnhancement(
+      boundCapabilities().io,
+      boundCapabilities().requestRecovery,
+      { cwd: process.cwd(), env: {} },
+      {},
+    ),
     /configuration warnings/,
   );
   await flush();
@@ -145,7 +158,12 @@ await test("factory rejects relative primary metadata instead of resolving it ag
       ? "primary repo"
       : join(native.primary, ".git");
   await assert.rejects(
-    createEnhancement(boundHost().host, { cwd: process.cwd(), env: {} }, {}),
+    createEnhancement(
+      boundCapabilities().io,
+      boundCapabilities().requestRecovery,
+      { cwd: process.cwd(), env: {} },
+      {},
+    ),
     /ordinary primary checkout/,
   );
   assert.equal(
@@ -174,7 +192,8 @@ await test("structured trust preserves unusual path characters, project fields a
   const stderr = t.mock.method(process.stderr, "write", () => true);
   for (let i = 0; i < 2; i++) {
     const instance = await createEnhancement(
-      boundHost().host,
+      boundCapabilities().io,
+      boundCapabilities().requestRecovery,
       { cwd: join(primary, "task"), env: {} },
       {},
     );
@@ -197,7 +216,8 @@ await test("already-trusted creation reads effective configuration without chang
   const native = await nativeFixture(t);
   const before = structuredClone(native.configuration);
   const instance = await createEnhancement(
-    boundHost().host,
+    boundCapabilities().io,
+    boundCapabilities().requestRecovery,
     { cwd: process.cwd(), env: {} },
     {},
   );
@@ -223,7 +243,8 @@ for (const failure of [
   await test(`factory rejects ${failure} and releases its partial resources while preserving another observer`, async (t) => {
     const native = await nativeFixture(t);
     const other = await createEnhancement(
-      boundHost().host,
+      boundCapabilities().io,
+      boundCapabilities().requestRecovery,
       { cwd: process.cwd(), env: {} },
       {},
     );
@@ -257,9 +278,14 @@ for (const failure of [
       }
       return handleConfig(request);
     };
-    const bound = boundHost();
+    const bound = boundCapabilities();
     await assert.rejects(
-      createEnhancement(bound.host, { cwd: process.cwd(), env: {} }, {}),
+      createEnhancement(
+        bound.io,
+        bound.requestRecovery,
+        { cwd: process.cwd(), env: {} },
+        {},
+      ),
       /Codex/,
     );
     await flush();
@@ -306,7 +332,12 @@ for (const layout of [
       return handleGit(args, native.primary);
     };
     await assert.rejects(
-      createEnhancement(boundHost().host, { cwd: process.cwd(), env: {} }, {}),
+      createEnhancement(
+        boundCapabilities().io,
+        boundCapabilities().requestRecovery,
+        { cwd: process.cwd(), env: {} },
+        {},
+      ),
       /Codex/,
     );
     await flush();

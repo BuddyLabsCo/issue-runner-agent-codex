@@ -2,7 +2,12 @@ import assert from "node:assert/strict";
 import { join } from "node:path";
 import { test } from "node:test";
 import { createEnhancement } from "../../src/index.ts";
-import { boundHost, flush, hook, nativeFixture } from "../fixtures/native.ts";
+import {
+  boundCapabilities,
+  flush,
+  hook,
+  nativeFixture,
+} from "../fixtures/native.ts";
 
 await test("factory trusts a newly added hook by its current hash before startup", async (t) => {
   const native = await nativeFixture(t);
@@ -11,9 +16,10 @@ await test("factory trusts a newly added hook by its current hash before startup
     { ...hook("trusted"), trustStatus: "trusted" },
     { ...hook("managed"), trustStatus: "managed", isManaged: true },
   );
-  const bound = boundHost();
+  const bound = boundCapabilities();
   const instance = await createEnhancement(
-    bound.host,
+    bound.io,
+    bound.requestRecovery,
     { cwd: process.cwd(), env: {} },
     {},
   );
@@ -39,7 +45,8 @@ await test("factory refreshes changed hashes without enabling disabled hooks or 
   const stderr = t.mock.method(process.stderr, "write", () => true);
   for (let i = 0; i < 2; i++) {
     const instance = await createEnhancement(
-      boundHost().host,
+      boundCapabilities().io,
+      boundCapabilities().requestRecovery,
       { cwd: process.cwd(), env: {} },
       {},
     );
@@ -77,7 +84,8 @@ await test("factory verifies already-trusted and managed hooks without writing c
   );
   const before = structuredClone(native.configuration);
   const instance = await createEnhancement(
-    boundHost().host,
+    boundCapabilities().io,
+    boundCapabilities().requestRecovery,
     { cwd: process.cwd(), env: {} },
     {},
   );
@@ -100,7 +108,7 @@ await test(
     const native = await nativeFixture(t);
     native.configuration.projects = {};
     native.hooks.push(hook());
-    const bound = boundHost();
+    const bound = boundCapabilities();
     const context = { cwd: join(native.primary, "linked task"), env: {} };
     const list = native.hooksHandler;
     let release!: () => void;
@@ -121,12 +129,15 @@ await test(
       };
     });
     let returned = false;
-    const creating = createEnhancement(bound.host, context, {}).then(
-      (instance) => {
-        returned = true;
-        return instance;
-      },
-    );
+    const creating = createEnhancement(
+      bound.io,
+      bound.requestRecovery,
+      context,
+      {},
+    ).then((instance) => {
+      returned = true;
+      return instance;
+    });
     await reading;
     assert.equal(returned, false);
     assert.deepEqual(
@@ -162,9 +173,14 @@ await test("factory rejects a changed hash on hook readback and cleans up its pr
     if (++reads === 2) native.hooks[0]!.currentHash = "sha256:changed-again";
     return list(request);
   };
-  const bound = boundHost();
+  const bound = boundCapabilities();
   await assert.rejects(
-    createEnhancement(bound.host, { cwd: process.cwd(), env: {} }, {}),
+    createEnhancement(
+      bound.io,
+      bound.requestRecovery,
+      { cwd: process.cwd(), env: {} },
+      {},
+    ),
     /Codex hook trust.*verif/,
   );
   await flush();
@@ -186,7 +202,8 @@ for (const failure of [
   await test(`factory rejects hook ${failure} and preserves other observers and terminal state`, async (t) => {
     const native = await nativeFixture(t);
     const other = await createEnhancement(
-      boundHost().host,
+      boundCapabilities().io,
+      boundCapabilities().requestRecovery,
       { cwd: process.cwd(), env: {} },
       {},
     );
@@ -224,10 +241,15 @@ for (const failure of [
       }
       return write(request);
     };
-    const bound = boundHost();
+    const bound = boundCapabilities();
     const stderr = t.mock.method(process.stderr, "write", () => true);
     await assert.rejects(
-      createEnhancement(bound.host, { cwd: process.cwd(), env: {} }, {}),
+      createEnhancement(
+        bound.io,
+        bound.requestRecovery,
+        { cwd: process.cwd(), env: {} },
+        {},
+      ),
       /Codex/,
     );
     await flush();
@@ -305,7 +327,12 @@ for (const [name, changes] of [
             ],
           };
     await assert.rejects(
-      createEnhancement(boundHost().host, { cwd: process.cwd(), env: {} }, {}),
+      createEnhancement(
+        boundCapabilities().io,
+        boundCapabilities().requestRecovery,
+        { cwd: process.cwd(), env: {} },
+        {},
+      ),
       /Codex/,
     );
     await flush();
@@ -380,7 +407,12 @@ for (const [name, response] of [
     const native = await nativeFixture(t);
     native.hooksHandler = () => response;
     await assert.rejects(
-      createEnhancement(boundHost().host, { cwd: process.cwd(), env: {} }, {}),
+      createEnhancement(
+        boundCapabilities().io,
+        boundCapabilities().requestRecovery,
+        { cwd: process.cwd(), env: {} },
+        {},
+      ),
       /Codex/,
     );
     assert.equal(

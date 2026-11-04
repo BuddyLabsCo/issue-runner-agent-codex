@@ -4,13 +4,14 @@ import WebSocket from "ws";
 import { Duplex } from "node:stream";
 import { recoveryFixture } from "../fixtures/recovery.ts";
 import { createEnhancement } from "../../src/index.ts";
-import { boundHost, flush, nativeFixture } from "../fixtures/native.ts";
+import { boundCapabilities, flush, nativeFixture } from "../fixtures/native.ts";
 
 await test("concurrent stops share failure and retry unfinished native releases", async (t) => {
   const native = await nativeFixture(t);
-  const bound = boundHost();
+  const bound = boundCapabilities();
   const instance = await createEnhancement(
-    bound.host,
+    bound.io,
+    bound.requestRecovery,
     { cwd: process.cwd(), env: {} },
     {},
   );
@@ -28,7 +29,14 @@ await test("concurrent stops share failure and retry unfinished native releases"
   await assert.rejects(concurrent, (error) => error === failure);
   await assert.rejects(instance.startMonitoring("known"), /stopped/);
   await assert.rejects(instance.waitUntilReady(), /stopped/);
-  assert.throws(() => instance.onAssignment("handoff.json"), /stopped/);
+  assert.throws(
+    () =>
+      instance.onAssignment({
+        id: "assignment-1",
+        expectedFile: "handoff.json",
+      }),
+    /stopped/,
+  );
   assert.deepEqual(bound.inputs, []);
   assert.equal(bound.recoveries, 0);
   release.mock.mockImplementation(kill);
@@ -42,7 +50,8 @@ await test("concurrent stops share failure and retry unfinished native releases"
 await test("a failed socket release does not prevent proxy cleanup or repeat it on retry", async (t) => {
   const native = await nativeFixture(t);
   const instance = await createEnhancement(
-    boundHost().host,
+    boundCapabilities().io,
+    boundCapabilities().requestRecovery,
     { cwd: process.cwd(), env: {} },
     {},
   );
@@ -64,18 +73,19 @@ await test("stop waits for issued readiness input to settle without sending repl
   for (const rejects of [false, true]) {
     await t.test(String(rejects), async (t) => {
       await nativeFixture(t);
-      const bound = boundHost();
+      const bound = boundCapabilities();
       let settle!: () => void;
       const input = new Promise<void>((resolve, reject) => {
         settle = rejects ? () => reject(new Error("input failed")) : resolve;
       });
-      const submit = bound.host.submitText.bind(bound.host);
-      bound.host.submitText = async (text) => {
+      const submit = bound.io.submitText.bind(bound.io);
+      bound.io.submitText = async (text) => {
         await submit(text);
         await input;
       };
       const instance = await createEnhancement(
-        bound.host,
+        bound.io,
+        bound.requestRecovery,
         { cwd: process.cwd(), env: {} },
         {},
       );
@@ -106,7 +116,7 @@ await test("initialization and preflight errors survive cleanup failure with a s
   for (const stage of ["initialize", "preflight"]) {
     await t.test(stage, async (t) => {
       const native = await nativeFixture(t);
-      const bound = boundHost();
+      const bound = boundCapabilities();
       const stderr: string[] = [];
       t.mock.method(process.stderr, "write", (value: string) => {
         if (value.startsWith("[codex]")) stderr.push(value);
@@ -122,7 +132,12 @@ await test("initialization and preflight errors survive cleanup failure with a s
       if (stage === "initialize") native.handler = fail;
       else native.configHandler = fail;
       await assert.rejects(
-        createEnhancement(bound.host, { cwd: process.cwd(), env: {} }, {}),
+        createEnhancement(
+          bound.io,
+          bound.requestRecovery,
+          { cwd: process.cwd(), env: {} },
+          {},
+        ),
         /Codex RPC request failed/,
       );
       await flush();
@@ -152,7 +167,12 @@ await test("factory releases an allocated proxy when connection construction thr
     throw failure;
   });
   await assert.rejects(
-    createEnhancement(boundHost().host, { cwd: process.cwd(), env: {} }, {}),
+    createEnhancement(
+      boundCapabilities().io,
+      boundCapabilities().requestRecovery,
+      { cwd: process.cwd(), env: {} },
+      {},
+    ),
     (error) => error === failure,
   );
   assert.equal(releases, 1);
@@ -163,7 +183,8 @@ await test("a refused proxy release fails unless its close event already confirm
     await t.test(String(exited), async (t) => {
       const native = await nativeFixture(t);
       const instance = await createEnhancement(
-        boundHost().host,
+        boundCapabilities().io,
+        boundCapabilities().requestRecovery,
         { cwd: process.cwd(), env: {} },
         {},
       );
@@ -188,15 +209,15 @@ await test("cleanup failure remains retryable when recovery fails before or duri
       const input = new Promise<void>((resolve, reject) => {
         rejectInput = () => reject(operationFailure);
       });
-      const request = bound.host.requestRecovery.bind(bound.host);
-      bound.host.requestRecovery = async () => {
-        await request();
+      const request = bound.recovery.request;
+      bound.recovery.request = async (id) => {
+        await request(id);
         await input;
       };
       await instance.startMonitoring("known");
       t.mock.timers.tick(10_000);
       await flush();
-      assert.equal(bound.recoveries, 1);
+      assert.deepEqual(bound.recoveryIds, ["assignment-1"]);
       if (historical) {
         rejectInput();
         await flush();
@@ -233,16 +254,17 @@ await test("cleanup failure remains retryable when recovery fails before or duri
       assert.equal(kill.mock.callCount(), 2);
       t.mock.timers.tick(100_000);
       await flush();
-      assert.equal(bound.recoveries, 1);
+      assert.deepEqual(bound.recoveryIds, ["assignment-1"]);
     });
   }
 });
 
 await test("stop shares an in-flight reconnect release and never opens its replacement proxy", async (t) => {
   const native = await nativeFixture(t);
-  const bound = boundHost();
+  const bound = boundCapabilities();
   const instance = await createEnhancement(
-    bound.host,
+    bound.io,
+    bound.requestRecovery,
     { cwd: process.cwd(), env: {} },
     {},
   );
@@ -280,11 +302,21 @@ await test("stop shares an in-flight reconnect release and never opens its repla
 
 await test("immediate stop and its cleanup retry leave another enhancement usable", async (t) => {
   const native = await nativeFixture(t);
-  const first = boundHost();
-  const second = boundHost();
+  const first = boundCapabilities();
+  const second = boundCapabilities();
   const context = { cwd: process.cwd(), env: {} };
-  const stopped = await createEnhancement(first.host, context, {});
-  const active = await createEnhancement(second.host, context, {});
+  const stopped = await createEnhancement(
+    first.io,
+    first.requestRecovery,
+    context,
+    {},
+  );
+  const active = await createEnhancement(
+    second.io,
+    second.requestRecovery,
+    context,
+    {},
+  );
   const kill = t.mock.method(native.proxies[0]!, "kill");
   kill.mock.mockImplementationOnce(() => {
     throw new Error("cleanup failed");
@@ -320,7 +352,8 @@ await test("immediate stop and its cleanup retry leave another enhancement usabl
 await test("stop reports all remaining release failures and retries them together", async (t) => {
   const native = await nativeFixture(t);
   const instance = await createEnhancement(
-    boundHost().host,
+    boundCapabilities().io,
+    boundCapabilities().requestRecovery,
     { cwd: process.cwd(), env: {} },
     {},
   );

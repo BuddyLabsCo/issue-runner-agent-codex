@@ -8,7 +8,7 @@ import { test } from "node:test";
 
 const execute = promisify(execFile);
 
-await test("packs JavaScript and declarations for a Core-contract consumer without a terminal plugin", async (t) => {
+await test("imports the packed runtime without Core, then checks declarations against the development artifact", async (t) => {
   const root = process.cwd();
   const scratch = await mkdtemp(join(root, "package-test-"));
   t.after(() => rm(scratch, { recursive: true, force: true }));
@@ -59,7 +59,6 @@ await test("packs JavaScript and declarations for a Core-contract consumer witho
       "--no-audit",
       "--no-fund",
       join(scratch, artifact.filename),
-      resolve("issue-runner-core-contract.1.tgz"),
     ],
     scratch,
   );
@@ -69,13 +68,57 @@ await test("packs JavaScript and declarations for a Core-contract consumer witho
   assert.ok(
     !Object.keys(installed.packages).some((name) => name.includes("herdr")),
   );
+  assert.equal(installed.packages["node_modules/issue-runner-core"], undefined);
+  const manifest = JSON.parse(
+    await readFile(
+      join(scratch, "node_modules/issue-runner-agent-codex/package.json"),
+      "utf8",
+    ),
+  ) as {
+    dependencies?: Record<string, string>;
+    peerDependencies?: unknown;
+    peerDependenciesMeta?: unknown;
+  };
+  assert.equal(manifest.dependencies?.["issue-runner-core"], undefined);
+  assert.equal(manifest.peerDependencies, undefined);
+  assert.equal(manifest.peerDependenciesMeta, undefined);
+  await execute(
+    process.execPath,
+    [
+      "--input-type=module",
+      "-e",
+      [
+        'import assert from "node:assert/strict";',
+        'import { registerHooks } from "node:module";',
+        // Prevent the parent checkout's dev dependency from masking a runtime import.
+        'registerHooks({ resolve(specifier, context, next) { if (specifier === "issue-runner-core" || specifier.startsWith("issue-runner-core/")) throw new Error("Runtime must not load Core"); return next(specifier, context); } });',
+        'const enhancement = await import("issue-runner-agent-codex");',
+        'assert.deepEqual(Object.keys(enhancement).sort(), ["contractVersion", "createEnhancement"]);',
+        "assert.equal(enhancement.contractVersion, 2);",
+        'assert.equal(typeof enhancement.createEnhancement, "function");',
+      ].join("\n"),
+    ],
+    { cwd: scratch },
+  );
+  await runNpm(
+    [
+      "install",
+      "--save-dev",
+      "--prefer-offline",
+      "--ignore-scripts",
+      "--no-audit",
+      "--no-fund",
+      resolve("issue-runner-core-contract.1.tgz"),
+    ],
+    scratch,
+  );
   await writeFile(
     join(scratch, "consumer.mts"),
     [
       'import type { EnhancementModule } from "issue-runner-core/terminal";',
       'import * as enhancement from "issue-runner-agent-codex";',
       "const contract: EnhancementModule = enhancement;",
-      'if (contract.contractVersion !== 1) throw new Error("Wrong contract");',
+      'if (contract.contractVersion !== 2) throw new Error("Wrong contract");',
     ].join("\n"),
   );
   await execute(
@@ -99,18 +142,33 @@ await test("packs JavaScript and declarations for a Core-contract consumer witho
     [
       "--input-type=module",
       "-e",
-      'import { contractVersion, createEnhancement } from "issue-runner-agent-codex"; if (contractVersion !== 1 || typeof createEnhancement !== "function") throw new Error("Invalid exports");',
+      'import { enhancementContractVersion } from "issue-runner-core/terminal"; import { contractVersion } from "issue-runner-agent-codex"; if (enhancementContractVersion !== 2 || contractVersion !== enhancementContractVersion) throw new Error("Wrong Core artifact");',
     ],
     { cwd: scratch },
+  );
+  const declarationPath = "node_modules/issue-runner-core/dist/terminal.d.ts";
+  assert.equal(
+    await readFile(join(root, declarationPath), "utf8"),
+    await readFile(join(scratch, declarationPath), "utf8"),
   );
   const core = await readFile(resolve("issue-runner-core-contract.1.tgz"));
   assert.equal(
     createHash("sha256").update(core).digest("hex"),
-    "89faaac1a8b49c12210834cd641def37fc724833862ef35b48e922470ebb5f96",
+    "e11ddcc6900158b3f4ab3f91acc461dbd2c7f99ceb295c50c46ddced9310a65a",
   );
   const lock = JSON.parse(
     await readFile(resolve("package-lock.json"), "utf8"),
-  ) as { packages: Record<string, { version?: string; integrity?: string }> };
+  ) as {
+    packages: Record<
+      string,
+      { version?: string; integrity?: string; resolved?: string; dev?: boolean }
+    >;
+  };
+  assert.equal(
+    lock.packages["node_modules/issue-runner-core"]?.resolved,
+    "file:issue-runner-core-contract.1.tgz",
+  );
+  assert.equal(lock.packages["node_modules/issue-runner-core"]?.dev, true);
   assert.equal(
     lock.packages["node_modules/issue-runner-core"]?.version,
     "0.0.0-contract.1",

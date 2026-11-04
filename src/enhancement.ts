@@ -1,7 +1,8 @@
 import { randomUUID } from "node:crypto";
 import type {
   Enhancement,
-  EnhancementHost,
+  TerminalIO,
+  RequestRecovery,
   EnhancementContext,
 } from "issue-runner-core/terminal";
 import { connectNative, type NativeClient } from "./codex/client.ts";
@@ -13,20 +14,26 @@ import { preflight } from "./preflight/trust.ts";
 import { diagnostic } from "./diagnostics.ts";
 
 function assemble(
-  host: EnhancementHost,
+  io: TerminalIO,
+  requestRecovery: RequestRecovery,
   client: NativeClient,
   options: Options,
   cwd: string,
 ): Enhancement {
   const observation = new Observation(client);
   const readiness = new Readiness(
-    host,
+    io,
     client,
     observation,
     randomUUID(),
     options.readyTimeout,
   );
-  const recovery = new ErrorRecovery(host, observation, options, cwd);
+  const recovery = new ErrorRecovery(
+    requestRecovery,
+    observation,
+    options,
+    cwd,
+  );
   let stopped = false;
   let stopping: Promise<void> | undefined;
   const active = () => {
@@ -46,9 +53,9 @@ function assemble(
       active();
       return await readiness.wait();
     },
-    onAssignment(expectedFile) {
+    onAssignment(assignment) {
       active();
-      observation.assign(expectedFile);
+      observation.assign(assignment);
     },
     stop() {
       if (stopping) return stopping;
@@ -70,7 +77,8 @@ function assemble(
 }
 
 export async function createEnhancement(
-  host: EnhancementHost,
+  io: TerminalIO,
+  requestRecovery: RequestRecovery,
   context: EnhancementContext,
   config: unknown,
 ): Promise<Enhancement> {
@@ -78,7 +86,7 @@ export async function createEnhancement(
   const client = await connectNative(context);
   try {
     await preflight(client, context);
-    return assemble(host, client, options, context.cwd);
+    return assemble(io, requestRecovery, client, options, context.cwd);
   } catch (error) {
     await client.close().catch(() => {
       diagnostic(undefined, "initialization cleanup failed");

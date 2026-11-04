@@ -1,3 +1,4 @@
+import type { Enhancement } from "issue-runner-core/terminal";
 import { NativeClient, object, type Notification } from "../codex/client.ts";
 import { diagnostic } from "../diagnostics.ts";
 
@@ -44,7 +45,7 @@ export class Observation {
   available = true;
   initialized = false;
   willRetry: boolean | undefined;
-  expectedFile: string | undefined;
+  assignment: Parameters<Enhancement["onAssignment"]>[0] | undefined;
   assignmentVersion = 0;
   version = 0;
   private snapshotVersion = 0;
@@ -118,9 +119,13 @@ export class Observation {
     for (const listener of this.changes) listener();
   }
 
-  assign(expectedFile: string): void {
-    if (this.expectedFile === expectedFile) return;
-    this.expectedFile = expectedFile;
+  assign(assignment: Parameters<Enhancement["onAssignment"]>[0]): void {
+    if (
+      this.assignment?.id === assignment.id &&
+      this.assignment.expectedFile === assignment.expectedFile
+    )
+      return;
+    this.assignment = { ...assignment };
     this.assignmentVersion++;
     this.invalidate();
   }

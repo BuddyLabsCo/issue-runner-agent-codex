@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { join, resolve } from "node:path";
 import { test } from "node:test";
 import { createEnhancement } from "../../src/index.ts";
-import { boundHost, flush, nativeFixture } from "../fixtures/native.ts";
+import { boundCapabilities, flush, nativeFixture } from "../fixtures/native.ts";
 
 function projectLayer(root: string, disabledReason: string | null = null) {
   return {
@@ -29,7 +29,8 @@ await test("factory establishes trust when native configuration returns null pro
   const native = await nativeFixture(t);
   native.configuration.projects = null;
   const instance = await createEnhancement(
-    boundHost().host,
+    boundCapabilities().io,
+    boundCapabilities().requestRecovery,
     { cwd: process.cwd(), env: {} },
     {},
   );
@@ -78,10 +79,11 @@ await test("factory recovers an initial trust warning when writing trust enables
     written = true;
     return handleConfig(request);
   };
-  const bound = boundHost();
+  const bound = boundCapabilities();
   for (let attempt = 0; attempt < 2; attempt++) {
     const instance = await createEnhancement(
-      bound.host,
+      bound.io,
+      bound.requestRecovery,
       { cwd: native.primary, env: {} },
       {},
     );
@@ -134,7 +136,8 @@ for (const withTrustWarning of [false, true]) {
     for (let attempt = 0; attempt < 2; attempt++) {
       await assert.rejects(
         createEnhancement(
-          boundHost().host,
+          boundCapabilities().io,
+          boundCapabilities().requestRecovery,
           { cwd: native.primary, env: {} },
           {},
         ),
@@ -203,7 +206,12 @@ for (const unresolved of [
       return handleConfig(request);
     };
     await assert.rejects(
-      createEnhancement(boundHost().host, { cwd: native.primary, env: {} }, {}),
+      createEnhancement(
+        boundCapabilities().io,
+        boundCapabilities().requestRecovery,
+        { cwd: native.primary, env: {} },
+        {},
+      ),
       /configuration warnings/,
     );
     await flush();
@@ -230,7 +238,8 @@ await test("factory retires a native trust warning only after every named projec
       : [projectLayer(native.primary)],
   });
   const instance = await createEnhancement(
-    boundHost().host,
+    boundCapabilities().io,
+    boundCapabilities().requestRecovery,
     { cwd: nested, env: {} },
     {},
   );
@@ -241,7 +250,12 @@ await test("factory retires a native trust warning only after every named projec
   await instance.stop();
   includeNested = false;
   await assert.rejects(
-    createEnhancement(boundHost().host, { cwd: nested, env: {} }, {}),
+    createEnhancement(
+      boundCapabilities().io,
+      boundCapabilities().requestRecovery,
+      { cwd: nested, env: {} },
+      {},
+    ),
     /configuration warnings/,
   );
 });
@@ -264,9 +278,14 @@ await test("factory rejects a linked Worktree's explicit untrusted setting and d
       ),
     ],
   });
-  const bound = boundHost();
+  const bound = boundCapabilities();
   await assert.rejects(
-    createEnhancement(bound.host, { cwd: worktree, env: {} }, {}),
+    createEnhancement(
+      bound.io,
+      bound.requestRecovery,
+      { cwd: worktree, env: {} },
+      {},
+    ),
     /trust/,
   );
   await flush();
@@ -284,7 +303,12 @@ for (const projects of [[], "invalid", 42]) {
     const native = await nativeFixture(t);
     native.configuration.projects = projects;
     await assert.rejects(
-      createEnhancement(boundHost().host, { cwd: native.primary, env: {} }, {}),
+      createEnhancement(
+        boundCapabilities().io,
+        boundCapabilities().requestRecovery,
+        { cwd: native.primary, env: {} },
+        {},
+      ),
       /Invalid Codex protocol object/,
     );
     assert.equal(
@@ -310,7 +334,12 @@ for (const override of ["worktree", "cwd"] as const) {
     };
     const before = structuredClone(native.configuration);
     await assert.rejects(
-      createEnhancement(boundHost().host, { cwd, env: {} }, {}),
+      createEnhancement(
+        boundCapabilities().io,
+        boundCapabilities().requestRecovery,
+        { cwd, env: {} },
+        {},
+      ),
       /explicitly untrusted/,
     );
     await flush();
@@ -352,7 +381,12 @@ for (const initiallyTrusted of [false, true]) {
           }
         : handleConfig(request);
     await assert.rejects(
-      createEnhancement(boundHost().host, { cwd: native.primary, env: {} }, {}),
+      createEnhancement(
+        boundCapabilities().io,
+        boundCapabilities().requestRecovery,
+        { cwd: native.primary, env: {} },
+        {},
+      ),
       /layer remains disabled/,
     );
     await flush();

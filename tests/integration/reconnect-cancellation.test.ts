@@ -1,15 +1,21 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { createEnhancement } from "../../src/index.ts";
-import { boundHost, flush, nativeFixture, thread } from "../fixtures/native.ts";
+import {
+  boundCapabilities,
+  flush,
+  nativeFixture,
+  thread,
+} from "../fixtures/native.ts";
 
 await test("public binding cannot bypass pending reconnect initialization", async (t) => {
   for (const ref of [undefined, "known"]) {
     await t.test(ref ?? "unbound", async (t) => {
       const native = await nativeFixture(t);
-      const bound = boundHost();
+      const bound = boundCapabilities();
       const instance = await createEnhancement(
-        bound.host,
+        bound.io,
+        bound.requestRecovery,
         { cwd: process.cwd(), env: {} },
         { retryLimit: 0 },
       );
@@ -54,20 +60,24 @@ await test("stop cancels each in-flight reattachment stage and ignores late resp
   for (const stage of ["initialize", "thread/resume", "thread/read"]) {
     await t.test(stage, async (t) => {
       const native = await nativeFixture(t);
-      const bound = boundHost();
+      const bound = boundCapabilities();
       const stderr: string[] = [];
       t.mock.method(process.stderr, "write", (value: string) => {
         if (value.startsWith("[codex]")) stderr.push(value);
         return true;
       });
       const instance = await createEnhancement(
-        bound.host,
+        bound.io,
+        bound.requestRecovery,
         { cwd: process.cwd(), env: {} },
         {},
       );
       t.after(() => instance.stop());
       await instance.startMonitoring("known");
-      instance.onAssignment("handoff.json");
+      instance.onAssignment({
+        id: "handoff.json",
+        expectedFile: "handoff.json",
+      });
       t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
       native.sockets[0]!.close();
       await flush();

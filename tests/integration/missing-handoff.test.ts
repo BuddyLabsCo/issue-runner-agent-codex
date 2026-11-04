@@ -3,15 +3,9 @@ import { test } from "node:test";
 import { flush } from "../fixtures/native.ts";
 import { recoveryFixture } from "../fixtures/recovery.ts";
 
-await test("missing handoffs wait 120 seconds before each of three argument-free Host submissions", async (t) => {
+await test("missing handoffs wait 120 seconds before each of three Assignment-aware recovery submissions", async (t) => {
   const { instance, state, bound, stderr, native } = await recoveryFixture(t);
   state.snapshot.turns[0]!.status = "completed";
-  const calls: unknown[][] = [];
-  const request = bound.host.requestRecovery.bind(bound.host);
-  bound.host.requestRecovery = (...args: unknown[]) => {
-    calls.push(args);
-    return request();
-  };
   await instance.startMonitoring("known");
   await flush();
   for (let attempt = 1; attempt <= 3; attempt++) {
@@ -22,7 +16,11 @@ await test("missing handoffs wait 120 seconds before each of three argument-free
     await flush();
     assert.equal(bound.recoveries, attempt);
   }
-  assert.deepEqual(calls, [[], [], []]);
+  assert.deepEqual(bound.recoveryIds, [
+    "assignment-1",
+    "assignment-1",
+    "assignment-1",
+  ]);
   assert.deepEqual(bound.inputs, []);
   assert.deepEqual(stderr, [
     "[codex] sessionref=known recovery=missing-handoff attempt=1/3\n",

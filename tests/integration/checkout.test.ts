@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { promisify } from "node:util";
 import { test } from "node:test";
 import { createEnhancement } from "../../src/index.ts";
-import { boundHost, nativeFixture } from "../fixtures/native.ts";
+import { boundCapabilities, nativeFixture } from "../fixtures/native.ts";
 
 const execute = promisify(execFile);
 const spawnGit = childProcess.spawn;
@@ -51,7 +51,8 @@ for (const checkout of ["ordinary", "linked"] as const) {
     const native = await nativeFixture(t, spawnGit);
     native.configuration.projects = {};
     const instance = await createEnhancement(
-      boundHost().host,
+      boundCapabilities().io,
+      boundCapabilities().requestRecovery,
       { cwd, env: {} },
       {},
     );

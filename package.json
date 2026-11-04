@@ -40,13 +40,5 @@
   "files": [
     "dist",
     "README.md"
-  ],
-  "peerDependencies": {
-    "issue-runner-core": "0.0.0-contract.1"
-  },
-  "peerDependenciesMeta": {
-    "issue-runner-core": {
-      "optional": true
-    }
-  }
+  ]
 }

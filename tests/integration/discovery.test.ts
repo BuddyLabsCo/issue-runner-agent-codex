@@ -1,11 +1,16 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { createEnhancement } from "../../src/index.ts";
-import { boundHost, flush, nativeFixture, thread } from "../fixtures/native.ts";
+import {
+  boundCapabilities,
+  flush,
+  nativeFixture,
+  thread,
+} from "../fixtures/native.ts";
 
 await test("discovers the GUID's enclosing loaded thread across same-cwd threads and pages", async (t) => {
   const native = await nativeFixture(t);
-  const bound = boundHost();
+  const bound = boundCapabilities();
   native.handler = (request) => {
     if (request.method === "thread/loaded/list")
       return request.params.cursor
@@ -46,7 +51,8 @@ await test("discovers the GUID's enclosing loaded thread across same-cwd threads
     return {};
   };
   const instance = await createEnhancement(
-    bound.host,
+    bound.io,
+    bound.requestRecovery,
     { cwd: process.cwd(), env: {} },
     {},
   );
@@ -87,7 +93,7 @@ await test("discovers the GUID's enclosing loaded thread across same-cwd threads
 
 await test("delayed discovery keeps two-second rounds and stops enumeration after binding", async (t) => {
   const native = await nativeFixture(t);
-  const bound = boundHost();
+  const bound = boundCapabilities();
   let loaded = false;
   native.handler = (request) => {
     if (request.method === "thread/loaded/list")
@@ -103,7 +109,8 @@ await test("delayed discovery keeps two-second rounds and stops enumeration afte
     };
   };
   const instance = await createEnhancement(
-    bound.host,
+    bound.io,
+    bound.requestRecovery,
     { cwd: process.cwd(), env: {} },
     {},
   );
@@ -138,13 +145,13 @@ await test("delayed discovery keeps two-second rounds and stops enumeration afte
 
 await test("discovery notices evidence while a Host round is pending and waits for its completion", async (t) => {
   const native = await nativeFixture(t);
-  const bound = boundHost();
+  const bound = boundCapabilities();
   let complete!: () => void;
   const round = new Promise<void>((resolve) => {
     complete = resolve;
   });
-  const submit = bound.host.submitText.bind(bound.host);
-  bound.host.submitText = async (text) => {
+  const submit = bound.io.submitText.bind(bound.io);
+  bound.io.submitText = async (text) => {
     await submit(text);
     await round;
   };
@@ -163,7 +170,8 @@ await test("discovery notices evidence while a Host round is pending and waits f
           ]),
         };
   const instance = await createEnhancement(
-    bound.host,
+    bound.io,
+    bound.requestRecovery,
     { cwd: process.cwd(), env: {} },
     { readyTimeout: 5 },
   );
@@ -213,7 +221,7 @@ await test("discovery notices evidence while a Host round is pending and waits f
 
 await test("discovery timeout retries the same Tab and GUID without relaunching", async (t) => {
   const native = await nativeFixture(t);
-  const bound = boundHost();
+  const bound = boundCapabilities();
   let matching = false;
   native.handler = (request) =>
     request.method === "thread/loaded/list"
@@ -231,7 +239,8 @@ await test("discovery timeout retries the same Tab and GUID without relaunching"
           },
         };
   const instance = await createEnhancement(
-    bound.host,
+    bound.io,
+    bound.requestRecovery,
     { cwd: process.cwd(), env: {} },
     { readyTimeout: 3 },
   );
@@ -260,7 +269,7 @@ await test("discovery timeout retries the same Tab and GUID without relaunching"
 
 await test("discovery does not lose a notification during an in-flight enumeration", async (t) => {
   const native = await nativeFixture(t);
-  const bound = boundHost();
+  const bound = boundCapabilities();
   let release!: (value: unknown) => void;
   let firstPage = true;
   native.handler = (request) => {
@@ -284,7 +293,8 @@ await test("discovery does not lose a notification during an in-flight enumerati
     };
   };
   const instance = await createEnhancement(
-    bound.host,
+    bound.io,
+    bound.requestRecovery,
     { cwd: process.cwd(), env: {} },
     {},
   );
@@ -308,8 +318,8 @@ await test("discovery does not lose a notification during an in-flight enumerati
 
 await test("distinct Tabs discover their own GUIDs among the same loaded threads and cwd", async (t) => {
   const native = await nativeFixture(t);
-  const first = boundHost();
-  const second = boundHost();
+  const first = boundCapabilities();
+  const second = boundCapabilities();
   let secondMarker = false;
   native.handler = (request) => {
     if (request.method === "thread/loaded/list")
@@ -331,12 +341,14 @@ await test("distinct Tabs discover their own GUIDs among the same loaded threads
     };
   };
   const a = await createEnhancement(
-    first.host,
+    first.io,
+    first.requestRecovery,
     { cwd: process.cwd(), env: {} },
     {},
   );
   const b = await createEnhancement(
-    second.host,
+    second.io,
+    second.requestRecovery,
     { cwd: process.cwd(), env: {} },
     {},
   );
@@ -378,7 +390,7 @@ await test("distinct Tabs discover their own GUIDs among the same loaded threads
 await test("stop during enumeration or inspection cancels discovery without adopting late evidence", async (t) => {
   const native = await nativeFixture(t);
   for (const pendingMethod of ["thread/loaded/list", "thread/read"]) {
-    const bound = boundHost();
+    const bound = boundCapabilities();
     let release!: (value: unknown) => void;
     const received = new Promise<void>((received) => {
       native.handler = (request) => {
@@ -392,7 +404,8 @@ await test("stop during enumeration or inspection cancels discovery without adop
     });
     const requestStart = native.requests.length;
     const instance = await createEnhancement(
-      bound.host,
+      bound.io,
+      bound.requestRecovery,
       { cwd: process.cwd(), env: {} },
       {},
     );
