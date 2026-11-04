@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import childProcess from "node:child_process";
+import { EventEmitter } from "node:events";
+import { PassThrough } from "node:stream";
 import { test } from "node:test";
 import { createEnhancement } from "../../src/index.ts";
 import { boundHost, flush, nativeFixture } from "../fixtures/native.ts";
@@ -134,4 +137,68 @@ await test("large finite readiness deadlines do not overflow native timers", asy
   await instance.stop();
   await waiting;
   assert.match(String(failure), /stopped/);
+});
+
+await test("daemon startup timeout survives failed starter release without stopping the shared daemon", async (t) => {
+  for (const release of ["throw", "refuse", "error", "close"]) {
+    await t.test(release, async (t) => {
+      const bound = boundHost();
+      const stderr: string[] = [];
+      t.mock.method(process.stderr, "write", (value: string) => {
+        if (value.startsWith("[codex]")) stderr.push(value);
+        return true;
+      });
+      let kills = 0;
+      const starter = Object.assign(new EventEmitter(), {
+        stdin: new PassThrough(),
+        stdout: new PassThrough(),
+        stderr: new PassThrough(),
+        kill: () => {
+          kills++;
+          if (release === "throw") throw new Error("private cleanup error");
+          if (release === "error")
+            starter.emit("error", new Error("private cleanup error"));
+          if (release === "close") starter.emit("close", 0);
+          return release === "close";
+        },
+      });
+      t.after(() => {
+        starter.stdin.destroy();
+        starter.stdout.destroy();
+        starter.stderr.destroy();
+      });
+      const spawn = t.mock.method(
+        childProcess,
+        "spawn",
+        (command: string, args: readonly string[]) => {
+          assert.equal(command, "codex");
+          assert.deepEqual(args, ["app-server", "daemon", "start"]);
+          return starter;
+        },
+      );
+      t.mock.timers.enable({ apis: ["setTimeout"] });
+      const failed = assert.rejects(
+        createEnhancement(bound.host, { cwd: process.cwd(), env: {} }, {}),
+        { message: "Codex daemon startup timed out" },
+      );
+      t.mock.timers.tick(9_999);
+      assert.equal(kills, 0);
+      assert.doesNotThrow(() => t.mock.timers.tick(1));
+      await failed;
+      assert.equal(kills, 1);
+      assert.deepEqual(
+        stderr,
+        release === "close"
+          ? []
+          : ["[codex] sessionref=unbound initialization cleanup failed\n"],
+      );
+      starter.emit("close", 0);
+      t.mock.timers.tick(100_000);
+      await flush();
+      assert.equal(spawn.mock.callCount(), 1);
+      assert.equal(kills, 1);
+      assert.deepEqual(bound.inputs, []);
+      assert.equal(bound.recoveries, 0);
+    });
+  }
 });

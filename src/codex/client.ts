@@ -2,6 +2,7 @@ import childProcess from "node:child_process";
 import { Duplex } from "node:stream";
 import WebSocket from "ws";
 import type { EnhancementContext } from "issue-runner-core/terminal";
+import { diagnostic } from "../diagnostics.ts";
 
 export function object(value: unknown): Record<string, unknown> {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
@@ -32,45 +33,56 @@ export class NativeClient {
     }
   >();
   private readonly context: EnhancementContext;
-  private proxy!: childProcess.ChildProcessWithoutNullStreams;
-  private stream!: Duplex;
   private socket!: WebSocket;
   private stopped = false;
-  private exited!: Promise<void>;
+  private readonly releases = new Set<() => void | Promise<void>>();
+  private releasing: Promise<void> | undefined;
 
   constructor(context: EnhancementContext) {
     this.context = context;
-    this.open();
   }
 
   private open(): void {
     const context = this.context;
-    this.proxy = childProcess.spawn("codex", ["app-server", "proxy"], {
+    const proxy = childProcess.spawn("codex", ["app-server", "proxy"], {
       cwd: context.cwd,
       env: { ...process.env, ...context.env },
       stdio: "pipe",
     });
-    this.exited = new Promise((resolve) => {
-      this.proxy.once("close", () => resolve());
+    let closed = false;
+    const exited = new Promise<void>((resolve) => {
+      proxy.once("close", () => {
+        closed = true;
+        resolve();
+      });
     });
-    this.stream = Duplex.from({
-      readable: this.proxy.stdout,
-      writable: this.proxy.stdin,
+    this.releases.add(async () => {
+      if (!proxy.kill() && !closed)
+        throw new Error("Codex proxy release failed");
+      await exited;
+    });
+    const stream = Duplex.from({
+      readable: proxy.stdout,
+      writable: proxy.stdin,
+    });
+    this.releases.add(() => {
+      stream.destroy();
     });
     // The URL supplies only the HTTP upgrade authority; all bytes use the native proxy.
     this.socket = new WebSocket("ws://localhost/", {
-      createConnection: () => this.stream,
+      createConnection: () => stream,
       handshakeTimeout: requestTimeout,
       perMessageDeflate: false,
     });
     const socket = this.socket;
+    this.releases.add(() => socket.terminate());
     const disconnected = () => {
       if (socket === this.socket) this.disconnect();
     };
-    this.proxy.stderr.resume();
-    this.proxy.on("error", disconnected);
-    this.proxy.on("close", disconnected);
-    this.stream.on("error", disconnected);
+    proxy.stderr.resume();
+    proxy.on("error", disconnected);
+    proxy.on("close", disconnected);
+    stream.on("error", disconnected);
     socket.on("error", disconnected);
     socket.on("close", disconnected);
     this.socket.on("message", (data) => {
@@ -105,6 +117,7 @@ export class NativeClient {
   }
 
   async initialize(): Promise<void> {
+    this.open();
     const socket = this.socket;
     await new Promise<void>((resolve, reject) => {
       const opened = () => {
@@ -136,7 +149,6 @@ export class NativeClient {
     await this.release();
     if (this.stopped) throw new Error("Codex enhancement stopped");
     this.available = true;
-    this.open();
     try {
       await this.initialize();
     } catch (error) {
@@ -175,7 +187,6 @@ export class NativeClient {
   }
 
   close(): Promise<void> {
-    if (this.stopped) return this.exited;
     this.stopped = true;
     this.disconnect();
     this.notifications.clear();
@@ -184,10 +195,25 @@ export class NativeClient {
   }
 
   private release(): Promise<void> {
-    this.socket.terminate();
-    this.stream.destroy();
-    this.proxy.kill();
-    return this.exited;
+    if (this.releasing) return this.releasing;
+    this.releasing = Promise.allSettled(
+      [...this.releases].reverse().map(async (release) => {
+        await release();
+        this.releases.delete(release);
+      }),
+    )
+      .then((results) => {
+        const errors = results
+          .filter((result) => result.status === "rejected")
+          .map((result) => result.reason as unknown);
+        if (errors.length === 1) throw errors[0];
+        if (errors.length)
+          throw new AggregateError(errors, "Codex cleanup failed");
+      })
+      .finally(() => {
+        this.releasing = undefined;
+      });
+    return this.releasing;
   }
 }
 
@@ -207,8 +233,13 @@ export async function connectNative(
     starter.stdout.resume();
     starter.stderr.resume();
     const timer = setTimeout(() => {
-      starter.kill();
+      // Release can emit error or close synchronously; preserve the timeout first.
       reject(new Error("Codex daemon startup timed out"));
+      try {
+        if (!starter.kill()) throw new Error("Codex starter release failed");
+      } catch {
+        diagnostic(undefined, "initialization cleanup failed");
+      }
     }, requestTimeout);
     starter.once("error", () => {
       clearTimeout(timer);
@@ -225,7 +256,9 @@ export async function connectNative(
     await client.initialize();
     return client;
   } catch (error) {
-    await client.close();
+    await client.close().catch(() => {
+      diagnostic(undefined, "initialization cleanup failed");
+    });
     throw error;
   }
 }

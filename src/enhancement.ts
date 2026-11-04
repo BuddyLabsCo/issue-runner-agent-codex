@@ -10,6 +10,7 @@ import { Observation } from "./monitor/state.ts";
 import { Readiness } from "./session/ready.ts";
 import { ErrorRecovery } from "./recovery/error.ts";
 import { preflight } from "./preflight/trust.ts";
+import { diagnostic } from "./diagnostics.ts";
 
 function assemble(
   host: EnhancementHost,
@@ -55,7 +56,14 @@ function assemble(
       recovery.stop();
       readiness.stop();
       observation.stop();
-      stopping = client.close().then(() => recovery.finish());
+      const input = Promise.all([readiness.finish(), recovery.finish()]);
+      stopping = client
+        .close()
+        .finally(() => input)
+        .catch((error: unknown) => {
+          stopping = undefined;
+          throw error;
+        });
       return stopping;
     },
   };
@@ -72,7 +80,9 @@ export async function createEnhancement(
     await preflight(client, context);
     return assemble(host, client, options, context.cwd);
   } catch (error) {
-    await client.close();
+    await client.close().catch(() => {
+      diagnostic(undefined, "initialization cleanup failed");
+    });
     throw error;
   }
 }

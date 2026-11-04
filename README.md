@@ -117,9 +117,13 @@ The same enhancement, GUID, assignment, and recovery policy instances survive an
 
 Each failed attempt prints `[codex] sessionref=<ref> observation reconnect failed` to inherited Runner stderr. Diagnostics omit wait times, credentials, close reasons, and native payloads. Binding, readiness, and native retry activity remain quiet. Reconnection never restarts the Agent or shared daemon.
 
-Await `stop()` to cancel readiness, pending recovery, and scheduled or in-flight reconnection. It releases owned proxies, connections, subscriptions, and timers; late responses cannot restore observation. Repeated calls wait for the same cleanup. Stop preserves the terminal, Agent, shared daemon, native history, and persisted configuration. Stop waits for an already-issued recovery request to settle; the Host owns that submission.
+Calling `stop()` immediately disables readiness, observation, reconnect, and recovery, and cancels their timers, waits, and subscriptions. Late native responses cannot restart activity. Stop waits for already-issued readiness input and recovery requests to settle under the Host contract, without submitting replacement input. You can stop a newly returned instance before starting monitoring or readiness.
 
-The factory rejects initialization and preflight failures after cleaning partial resources. Host input and native discovery failures propagate through readiness. Asynchronous recovery Host or final-read failures propagate unchanged through the next lifecycle call. Awaited `stop()` releases resources before propagating those failures. They do not consume additional retries or gain special acknowledgement handling.
+Concurrent stop calls share one cleanup attempt and its outcome. A resource-release failure rejects that attempt; a later `stop()` retries only unfinished releases. Completed releases are recorded, and stop has no additional effect after full success. Cleanup releases only this instance’s native connection and proxy. It preserves the terminal, Agent, shared daemon, unrelated conversations, other enhancements, native history, and persisted configuration.
+
+The factory attempts cleanup when initialization or preflight fails, including partially constructed connections. It preserves the original error if cleanup also fails and reports `initialization cleanup failed` separately to inherited Runner stderr.
+
+Host input and native discovery failures propagate through readiness. Asynchronous recovery Host or final-read failures remain available unchanged through active lifecycle calls and emit a redacted `recovery operation failed` diagnostic. A readiness input failure while stopping emits `readiness input failed`. Operational failures do not make cleanup reject or consume additional recovery attempts; stop rejects only remaining cleanup failures.
 
 ## Implementation and verification
 
@@ -136,5 +140,7 @@ Recovery tests cover classifications, inactive system errors, native retry suppr
 Missing-handoff tests extend that seam with every-attempt delays, independent budgets, file and assignment resets, final-read changes, cancellations, complete final replies, literal marker matching and later-turn reevaluation. Final assistant message and phase shapes were checked against the locally generated Codex 0.166.0 protocol.
 
 Reconnection tests use the baseline Host/native fixtures and controlled time, including with business recovery disabled. They cover fixed unlimited retries, initialization and reattachment failures, timeouts, restored subscriptions, same-ref filtering, GUID continuity, snapshot races, and stop during waits and native requests. Additional policy integration checks cover endings during outages, full-reply human-action handling, and preserved assignment budgets. Real joint integration acceptance and registry publication remain outside this ticket.
+
+Cleanup tests cover shared stop attempts, transient release failures, partial success without duplicate release, deferred Host input and proxy exit, operational errors during stop, factory failure cleanup, and instance isolation. They use the public lifecycle and portable native substitutes.
 
 See [code architecture](docs/code-architecture.md), [ticket #2](https://github.com/BuddyLabsCo/issue-runner-agent-codex/issues/2), [ticket #3](https://github.com/BuddyLabsCo/issue-runner-agent-codex/issues/3), [ticket #4](https://github.com/BuddyLabsCo/issue-runner-agent-codex/issues/4), [ticket #5](https://github.com/BuddyLabsCo/issue-runner-agent-codex/issues/5), [ticket #6](https://github.com/BuddyLabsCo/issue-runner-agent-codex/issues/6), and [ticket #7](https://github.com/BuddyLabsCo/issue-runner-agent-codex/issues/7) for ownership and scope.

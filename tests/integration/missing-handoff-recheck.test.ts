@@ -117,7 +117,11 @@ await test("missing-handoff file and Host failures propagate through the lifecyc
         instance.waitUntilReady(),
         (error) => error === failure,
       );
-      await assert.rejects(instance.stop(), (error) => error === failure);
+      await instance.stop();
+      await instance.stop();
+      assert.ok(
+        stderr.includes("[codex] sessionref=known recovery operation failed\n"),
+      );
       assert.ok(stderr.every((line) => !line.includes("boundary failure")));
     });
   }
