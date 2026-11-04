@@ -22,7 +22,7 @@ await test("file appearance resets even an exhausted missing-handoff budget whil
   await flush();
   assert.equal(bound.recoveries, 1);
   files.delete(expectedFile);
-  instance.onAssignment(expectedFile);
+  instance.onAssignment({ id: "assignment-1", expectedFile });
   native.notify("turn/completed", {
     threadId: "known",
     turn: state.snapshot.turns[0],
@@ -76,7 +76,7 @@ await test("file appearance during human-action suppression resets the budget fo
   ]);
 
   files.delete(expectedFile);
-  instance.onAssignment(expectedFile);
+  instance.onAssignment({ id: "assignment-1", expectedFile });
   state.snapshot.turns[0]!.id = "later-completion";
   state.snapshot.turns[0]!.items = [
     { id: "later-reply", type: "agentMessage", text: "Continuing delivery" },
@@ -170,7 +170,7 @@ await test("same-path continuation and refreshed or later completed turns preser
   await instance.startMonitoring("known");
   await flush();
   t.mock.timers.tick(1_000);
-  instance.onAssignment(expectedFile);
+  instance.onAssignment({ id: "assignment-1", expectedFile });
   native.notify("thread/status/changed", {
     threadId: "known",
     status: { type: "idle" },
@@ -206,7 +206,10 @@ await test("same-path continuation and refreshed or later completed turns preser
   t.mock.timers.tick(20_000);
   await flush();
   assert.equal(bound.recoveries, 2);
-  instance.onAssignment("new-handoff.json");
+  instance.onAssignment({
+    id: "new-handoff.json",
+    expectedFile: "new-handoff.json",
+  });
   await flush();
   t.mock.timers.tick(1_999);
   await flush();

@@ -1,4 +1,4 @@
-import type { EnhancementHost } from "issue-runner-core/terminal";
+import type { RequestRecovery } from "issue-runner-core/terminal";
 import { resolve } from "node:path";
 import { expectedFileExists } from "../codex/files.ts";
 import type { Options } from "../config.ts";
@@ -25,6 +25,7 @@ function excludedError(error: unknown): string | undefined {
 type Category = "error" | "missing-handoff";
 
 interface Candidate {
+  assignment: NonNullable<Observation["assignment"]>;
   turn: string;
   category: Category;
 }
@@ -35,7 +36,7 @@ interface Pending extends Candidate {
 }
 
 export class ErrorRecovery {
-  private readonly host: EnhancementHost;
+  private readonly requestRecovery: RequestRecovery;
   private readonly observation: Observation;
   private readonly options: Options;
   private readonly cwd: string;
@@ -49,12 +50,12 @@ export class ErrorRecovery {
   private readonly changed = () => this.evaluate();
 
   constructor(
-    host: EnhancementHost,
+    requestRecovery: RequestRecovery,
     observation: Observation,
     options: Options,
     cwd: string,
   ) {
-    this.host = host;
+    this.requestRecovery = requestRecovery;
     this.observation = observation;
     this.options = options;
     this.cwd = cwd;
@@ -73,7 +74,7 @@ export class ErrorRecovery {
       observation.available &&
       observation.initialized &&
       observation.sessionref &&
-      observation.expectedFile &&
+      observation.assignment &&
       turn
     ) {
       if (
@@ -81,12 +82,20 @@ export class ErrorRecovery {
         (status === "idle" || status === "systemError") &&
         observation.willRetry !== true
       )
-        return { turn: turn.id, category: "error" };
+        return {
+          assignment: observation.assignment,
+          turn: turn.id,
+          category: "error",
+        };
       if (
         (turn.status === "completed" || turn.status === "interrupted") &&
         status === "idle"
       )
-        return { turn: turn.id, category: "missing-handoff" };
+        return {
+          assignment: observation.assignment,
+          turn: turn.id,
+          category: "missing-handoff",
+        };
     }
   }
 
@@ -168,7 +177,7 @@ export class ErrorRecovery {
     }
     try {
       const present = await expectedFileExists(
-        resolve(this.cwd, observation.expectedFile!),
+        resolve(this.cwd, candidate.assignment.expectedFile),
       );
       if (!current()) return;
       if (present) {
@@ -246,7 +255,7 @@ export class ErrorRecovery {
     try {
       await this.observation.refresh();
       if (this.pending !== pending) return true;
-      const expectedFile = this.observation.expectedFile!;
+      const expectedFile = pending.assignment.expectedFile;
       present = await expectedFileExists(resolve(this.cwd, expectedFile));
     } catch (error) {
       if (this.pending !== pending) return true;
@@ -257,7 +266,8 @@ export class ErrorRecovery {
     const candidate = this.eligible();
     if (
       version !== this.observation.version ||
-      candidate?.turn !== pending.turn ||
+      candidate?.assignment !== pending.assignment ||
+      candidate.turn !== pending.turn ||
       candidate.category !== pending.category ||
       (pending.category === "missing-handoff" && this.actionRequired()) ||
       (pending.category === "error" &&
@@ -275,8 +285,8 @@ export class ErrorRecovery {
       this.observation.sessionref,
       `recovery=${pending.category} attempt=${attempt}/${this.options.retryLimit}`,
     );
-    await this.host.requestRecovery();
-    // A submission need not immediately produce a native turn notification.
+    await this.requestRecovery(pending.assignment.id);
+    // Core may fulfill a stale request without submitting input.
     return true;
   }
 

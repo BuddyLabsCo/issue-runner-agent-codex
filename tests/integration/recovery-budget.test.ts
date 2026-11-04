@@ -23,7 +23,10 @@ await test("default delays count three actual submissions, then report exhaustio
   t.mock.timers.tick(1_000_000);
   await flush();
   assert.equal(bound.recoveries, 3);
-  instance.onAssignment("another-handoff.json");
+  instance.onAssignment({
+    id: "another-handoff.json",
+    expectedFile: "another-handoff.json",
+  });
   native.notify("thread/status/changed", {
     threadId: "known",
     status: { type: "idle" },
@@ -73,7 +76,7 @@ await test("same-path continuation preserves both budget and pending delay", asy
   t.mock.timers.tick(10_000);
   await flush();
   t.mock.timers.tick(15_000);
-  instance.onAssignment(expectedFile);
+  instance.onAssignment({ id: "assignment-1", expectedFile });
   t.mock.timers.tick(4_999);
   await flush();
   assert.equal(bound.recoveries, 1);
@@ -156,4 +159,39 @@ await test("a cancelled second wait retains its twenty-second delay and attempt 
   await flush();
   assert.equal(bound.recoveries, 2);
   assert.match(stderr.at(-1)!, /attempt=2\/3/);
+});
+
+await test("fresh Assignment IDs sharing a path reset each budget and replace pending waits", async (t) => {
+  for (const status of ["failed", "completed"]) {
+    await t.test(status, async (t) => {
+      const { instance, state, bound, expectedFile } = await recoveryFixture(
+        t,
+        {
+          retryLimit: 1,
+          retryDelay: [1],
+          handoffRecoveryDelaySeconds: 1,
+        },
+      );
+      state.snapshot.turns[0]!.status = status;
+      await instance.startMonitoring("known");
+      await flush();
+      t.mock.timers.tick(1_000);
+      await flush();
+      assert.deepEqual(bound.recoveryIds, ["assignment-1"]);
+      instance.onAssignment({ id: "assignment-2", expectedFile });
+      await flush();
+      t.mock.timers.tick(999);
+      instance.onAssignment({ id: "assignment-3", expectedFile });
+      await flush();
+      t.mock.timers.tick(1);
+      await flush();
+      assert.deepEqual(bound.recoveryIds, ["assignment-1"]);
+      t.mock.timers.tick(999);
+      await flush();
+      assert.deepEqual(bound.recoveryIds, ["assignment-1", "assignment-3"]);
+      t.mock.timers.tick(10_000);
+      await flush();
+      assert.deepEqual(bound.recoveryIds, ["assignment-1", "assignment-3"]);
+    });
+  }
 });

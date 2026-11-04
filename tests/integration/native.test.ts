@@ -4,7 +4,7 @@ import { EventEmitter } from "node:events";
 import { PassThrough } from "node:stream";
 import { test } from "node:test";
 import { createEnhancement } from "../../src/index.ts";
-import { boundHost, flush, nativeFixture } from "../fixtures/native.ts";
+import { boundCapabilities, flush, nativeFixture } from "../fixtures/native.ts";
 
 await test("awaited factory initialization failure releases its partial connection without native shutdown", async (t) => {
   const native = await nativeFixture(t);
@@ -12,7 +12,12 @@ await test("awaited factory initialization failure releases its partial connecti
     throw new Error("private native error");
   };
   await assert.rejects(
-    createEnhancement(boundHost().host, { cwd: process.cwd(), env: {} }, {}),
+    createEnhancement(
+      boundCapabilities().io,
+      boundCapabilities().requestRecovery,
+      { cwd: process.cwd(), env: {} },
+      {},
+    ),
     /RPC request failed/,
   );
   await flush();
@@ -36,9 +41,10 @@ await test("stop rejects an in-flight bound snapshot and late results cannot res
           })
         : {};
   });
-  const bound = boundHost();
+  const bound = boundCapabilities();
   const instance = await createEnhancement(
-    bound.host,
+    bound.io,
+    bound.requestRecovery,
     { cwd: process.cwd(), env: {} },
     {},
   );
@@ -60,9 +66,10 @@ await test("stop rejects an in-flight bound snapshot and late results cannot res
 
 await test("the default deadline is twenty seconds and zero recovery settings accept the whole shared options object", async (t) => {
   const native = await nativeFixture(t);
-  const bound = boundHost();
+  const bound = boundCapabilities();
   const instance = await createEnhancement(
-    bound.host,
+    bound.io,
+    bound.requestRecovery,
     { cwd: process.cwd(), env: {} },
     {
       retryLimit: 0,
@@ -92,7 +99,8 @@ await test("the default deadline is twenty seconds and zero recovery settings ac
 await test("repeatable stop waits for its owned proxy to close", async (t) => {
   const native = await nativeFixture(t);
   const instance = await createEnhancement(
-    boundHost().host,
+    boundCapabilities().io,
+    boundCapabilities().requestRecovery,
     { cwd: process.cwd(), env: {} },
     {},
   );
@@ -120,7 +128,8 @@ await test("repeatable stop waits for its owned proxy to close", async (t) => {
 await test("large finite readiness deadlines do not overflow native timers", async (t) => {
   await nativeFixture(t);
   const instance = await createEnhancement(
-    boundHost().host,
+    boundCapabilities().io,
+    boundCapabilities().requestRecovery,
     { cwd: process.cwd(), env: {} },
     { readyTimeout: Number.MAX_VALUE },
   );
@@ -142,7 +151,7 @@ await test("large finite readiness deadlines do not overflow native timers", asy
 await test("daemon startup timeout survives failed starter release without stopping the shared daemon", async (t) => {
   for (const release of ["throw", "refuse", "error", "close"]) {
     await t.test(release, async (t) => {
-      const bound = boundHost();
+      const bound = boundCapabilities();
       const stderr: string[] = [];
       t.mock.method(process.stderr, "write", (value: string) => {
         if (value.startsWith("[codex]")) stderr.push(value);
@@ -178,7 +187,12 @@ await test("daemon startup timeout survives failed starter release without stopp
       );
       t.mock.timers.enable({ apis: ["setTimeout"] });
       const failed = assert.rejects(
-        createEnhancement(bound.host, { cwd: process.cwd(), env: {} }, {}),
+        createEnhancement(
+          bound.io,
+          bound.requestRecovery,
+          { cwd: process.cwd(), env: {} },
+          {},
+        ),
         { message: "Codex daemon startup timed out" },
       );
       t.mock.timers.tick(9_999);

@@ -6,7 +6,7 @@ import { PassThrough } from "node:stream";
 import { join, resolve } from "node:path";
 import { setImmediate } from "node:timers/promises";
 import type { TestContext } from "node:test";
-import type { EnhancementHost } from "issue-runner-core/terminal";
+import type { TerminalIO, RequestRecovery } from "issue-runner-core/terminal";
 import { WebSocketServer, WebSocket } from "ws";
 
 export interface Request {
@@ -19,11 +19,17 @@ export async function flush() {
   for (let i = 0; i < 8; i++) await setImmediate();
 }
 
-export function boundHost() {
+export function boundCapabilities() {
   const inputs: string[] = [];
   const keys: (readonly string[])[] = [];
-  let recoveries = 0;
-  const host: EnhancementHost = {
+  const recoveryIds: string[] = [];
+  const recovery: { request: RequestRecovery } = {
+    request: (id) => {
+      recoveryIds.push(id);
+      return Promise.resolve();
+    },
+  };
+  const io: TerminalIO = {
     read: () => Promise.resolve(""),
     submitText: (text) => {
       inputs.push(text);
@@ -33,17 +39,16 @@ export function boundHost() {
       keys.push(value);
       return Promise.resolve();
     },
-    requestRecovery: () => {
-      recoveries++;
-      return Promise.resolve();
-    },
   };
   return {
-    host,
+    io,
+    recovery,
+    requestRecovery: (id: string) => recovery.request(id),
+    recoveryIds,
     inputs,
     keys,
     get recoveries() {
-      return recoveries;
+      return recoveryIds.length;
     },
   };
 }

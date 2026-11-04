@@ -1,6 +1,6 @@
 # issue-runner-agent-codex
 
-Optional observation, readiness, and bounded recovery for an exact Codex conversation, through Core's Enhancement contract v1. The terminal plugin starts or resumes interactive Codex. This package connects to the shared daemon and proves readiness through native userShell records.
+Optional observation, readiness, and bounded recovery for an exact Codex conversation, through Core's Enhancement contract v2. The terminal plugin starts or resumes interactive Codex. This package connects to the shared daemon and proves readiness through native userShell records.
 
 ## Install a development candidate
 
@@ -9,29 +9,41 @@ Use Node.js 22.18.0 and npm 11. Install Git and native Codex separately; make `g
 Build and pack from this checkout:
 
 ```sh
-npm ci
-npm run check
-npm test
-npm pack --json
+npm ci --ignore-scripts
+npm --allow-scripts= run check
+npm --allow-scripts= test
+npm --allow-scripts= pack --json
 ```
 
-Install the resulting `issue-runner-agent-codex-0.0.0-dev.1.tgz` into your consumer. The tarball contains JavaScript and declarations and requires no terminal-plugin dependency. Core is a type-only, optional peer pinned to the verified `0.0.0-contract.1` contract artifact.
+Install the resulting `issue-runner-agent-codex-0.0.0-dev.1.tgz` into your consumer. The tarball contains JavaScript and declarations and requires no terminal-plugin dependency. Core is a development dependency used through type-only imports. The published package has no Core runtime dependency or peer dependency.
 
-The development dependency is the supplied `issue-runner-core-contract.1.tgz`, with SHA-256 `89faaac1a8b49c12210834cd641def37fc724833862ef35b48e922470ebb5f96`. `package-lock.json` records its local source, version, and SHA-512 integrity. This artifact verifies the contract; it does not establish full Core/Herdr product integration or registry availability.
+The development dependency remains `file:issue-runner-core-contract.1.tgz`. This complete Core package was built from a clean, isolated checkout of remote main at [commit `1bd2c4406978b168e3726c996fe7fbdae9ced8b4`](https://github.com/BuddyLabsCo/issue-runner-core/commit/1bd2c4406978b168e3726c996fe7fbdae9ced8b4). The filename is a storage convention, not the enhancement contract version.
+
+| Artifact field | Value |
+| --- | --- |
+| Package version | `0.0.0-contract.1` |
+| Enhancement contract | `2` |
+| SHA-256 | `e11ddcc6900158b3f4ab3f91acc461dbd2c7f99ceb295c50c46ddced9310a65a` |
+| npm pack SHA-1 | `3ea5ff3a688b919776689b7af38526da7f29dc4d` |
+| Build toolchain | Node.js `24.20.0`, npm `11.19.0`, TypeScript `5.9.3` |
+
+Core's documented workflow used `npm ci --ignore-scripts`, typechecking, its test suite, and `npm pack --json --pack-destination artifacts`. Packing ran Core's `prepack` build without changing its source or archive metadata. `package-lock.json` records the replacement archive's version and SHA-512 integrity. Local installation used a fresh cache and refreshed the installed declarations. This verifies the development artifact, not native Core/terminal integration or registry availability.
 
 ## Host the lifecycle
 
-Pass a Tab-bound Host implementing `read`, `submitText`, ordered `sendKeys`, and argument-free `requestRecovery`, as defined by `issue-runner-core/terminal`. Pass only `cwd` and an environment overlay in context. Await the factory before starting the Agent:
+Core injects four arguments in order: bound `TerminalIO`, `RequestRecovery`, `EnhancementContext`, and unknown configuration. `TerminalIO` supplies `read`, `submitText`, and ordered `sendKeys`; `requestRecovery(assignmentId)` is a separate callback. Context contains `cwd` and an environment overlay. Await the factory before starting the Agent:
 
 ```typescript
 import { createEnhancement } from "issue-runner-agent-codex";
 
-const enhancement = await createEnhancement(host, { cwd, env }, options);
+const enhancement = await createEnhancement(
+  io, requestRecovery, { cwd, env }, options,
+);
 try {
   await enhancement.startMonitoring(sessionref);
   await startOrResumeThroughTerminal();
   const ref = await enhancement.waitUntilReady();
-  enhancement.onAssignment(expectedFile);
+  enhancement.onAssignment({ id: assignmentId, expectedFile });
   // Core owns assignment delivery and handoff acceptance.
 } finally {
   await enhancement.stop();
@@ -42,13 +54,13 @@ Call `startMonitoring` before submitting the configured Agent command. When resu
 
 For a new conversation, omit the ref: `await enhancement.startMonitoring()`. During readiness, the enhancement enumerates loaded threads through `thread/loaded/list` and inspects their native userShell commands. Only a command containing this Tab's GUID identifies the conversation. The enhancement binds its enclosing threadId, reads current state through the same observation path, and returns that ref. It never selects by cwd, thread order, recency, filesystem markers, or model output. Tabs sharing a cwd have distinct GUIDs. Readiness rounds and native notifications trigger discovery scans; enumeration stops after binding.
 
-Each readiness wait submits `!` followed by the instance's GUID through `host.submitText`, then repeats after two seconds when the previous round has finished. Host retains its configured submit key. A userShell command containing the GUID proves readiness, including failed, nonzero, concatenated, or multiline commands. Model output does not prove readiness.
+Each readiness wait submits `!` followed by the instance's GUID through `io.submitText`, then repeats after two seconds when the previous round has finished. The terminal adapter retains its configured submit key. A userShell command containing the GUID proves readiness, including failed, nonzero, concatenated, or multiline commands. Model output does not prove readiness.
 
 Detection stops marker scheduling immediately. Readiness waits for the subscription, initial current-state read, and any issued input round to finish. Binding failures reject readiness.
 
 Each wait has its own deadline. Timeout rejects without claiming readiness. Retry `waitUntilReady()` on the same instance: it retains its GUID, any discovered ref, and observation, and does not replay the Agent command. Overlapping waits share input rounds and retain separate deadlines.
 
-`onAssignment` retains the exact path string. A different path replaces the assignment; the same string continues it. Assignments are not mapped to native turns. New bound turns, assignment replacement, disconnect, and stop invalidate stale asynchronous observations.
+`onAssignment({ id, expectedFile })` stores the ID and exact path synchronously. A fresh ID replaces the Assignment, cancels pending work, and resets both recovery budgets even when the path is unchanged. Repeating the same ID and path preserves its context. Recovery candidates retain the originating Assignment across timers, native refreshes, file checks, and reconnection. Assignments are not mapped to native turns. New bound turns, Assignment replacement, disconnect, and stop invalidate stale asynchronous observations. Readiness markers never create an Assignment.
 
 ## Establish checkout and hook trust before startup
 
@@ -79,7 +91,7 @@ Pass the whole shared enhancements options object. Unknown keys are left to thei
 | `retryDelay` | `[10, 20, 40]` | Nonempty list of finite, nonnegative numbers |
 | `handoffRecoveryDelaySeconds` | `120` | Finite, nonnegative number |
 
-`retryLimit` bounds actual submissions independently for errors and missing handoffs; `0` disables both. Error recovery waits `retryDelay` seconds before each submission, reusing the last entry for additional attempts. Missing-handoff recovery waits `handoffRecoveryDelaySeconds` before every submission. Cancelled waits consume no attempt or delay entry. There is no total recovery window.
+`retryLimit` bounds recovery requests independently for errors and missing handoffs; `0` disables both. Error recovery waits `retryDelay` seconds before each request, reusing the last entry for additional attempts. Missing-handoff recovery waits `handoffRecoveryDelaySeconds` before every request. Cancelled waits consume no attempt or delay entry. There is no total recovery window.
 
 ## Recover final turn errors
 
@@ -87,21 +99,21 @@ With a current assignment, the enhancement recovers a latest failed turn only wh
 
 The native machine classifications `sessionBudgetExceeded`, `usageLimitExceeded`, `unauthorized`, `modelNotFound`, `contextWindowExceeded`, `cyberPolicy`, and `misalignmentPolicyViolation` are reported without automatic recovery, even alongside HTTP 429. Every remaining final turn error, including unknown or unclassified errors, uses the bounded error budget. Observation, transport, and local readiness failures do not count as failed business turns.
 
-Before sending input, recovery waits its configured delay, refreshes the current native state, and checks the current expected file. A present file suppresses submission; Core still owns handoff validation. A new bound turn, assignment replacement, loss of eligibility, disconnect, or stop cancels the pending wait. Later eligible endings start a fresh wait.
+Before requesting recovery, the enhancement waits its configured delay, refreshes native state, and checks the originating Assignment's expected file. A present file suppresses the request; Core still owns handoff validation. A new bound turn, assignment replacement, loss of eligibility, disconnect, or stop cancels the pending wait. Later eligible endings start a fresh wait.
 
-A different expected-file path resets the error budget and delay position. Same-path continuation and repeated observation refreshes preserve them. A later completed or interrupted turn resets them whether or not its handoff exists, then evaluates missing-handoff recovery independently.
+A fresh Assignment ID resets the error budget and delay position, including when it reuses the same expected-file path. Continuing the same Assignment and repeated observation refreshes preserve them. A later completed or interrupted turn resets them whether or not its handoff exists, then evaluates missing-handoff recovery independently.
 
-Each actual submission calls only argument-free `host.requestRecovery()`. The Host retains Core's recovery wording and its terminal submit key. The enhancement never replays task text or submits a business turn through RPC. Excluded errors and exhaustion appear on inherited Runner stderr; each submission prints `[codex] sessionref=<ref> recovery=error attempt=<attempt>/<limit>`. Scheduling, cancellation, and native retry activity remain quiet.
+Each attempt calls only `requestRecovery(originatingId)` after rechecking the Assignment, native state, and expected file. Core owns recovery wording and queues accepted input through the terminal adapter. The enhancement never composes continuation text or submits a business turn through RPC. A fulfilled callback completes the request, including Core's stale no-op; it does not prove native input occurred. Rejected callbacks remain operational errors and do not trigger failure retries. Excluded errors and exhaustion appear on inherited Runner stderr; each request prints `[codex] sessionref=<ref> recovery=error attempt=<attempt>/<limit>`. Scheduling, cancellation, and native retry activity remain quiet.
 
-The final state/file check and terminal input are not atomic. A new turn or file can appear after the final check and before Host input reaches Codex. The enhancement cannot eliminate that residual race.
+Core owns command launch, readiness pause controls, capability revocation, queue-time rejection of stale Assignment input, handoff acceptance, and tab closure. Native state/file checks and terminal input are not atomic: a new native turn or file can still appear after the final check.
 
 ## Recover missing handoffs and respect human action
 
 With a current assignment, a completed or interrupted latest turn qualifies only when the bound thread is idle and the expected file is absent. A turn ending alone does not prove inactivity. Failed turns use only the error category.
 
-Every missing-handoff attempt waits 120 seconds by default, including the first attempt. Its independent budget defaults to three actual Host submissions. Completed or interrupted turns without the file preserve this budget. File appearance resets it and stops pending missing-file recovery; a different assignment path resets both budgets. Same-path continuation and refreshed observations preserve attempts.
+Every missing-handoff attempt waits 120 seconds by default, including the first attempt. Its independent budget defaults to three recovery requests. Completed or interrupted turns without the file preserve this budget. File appearance resets it and stops pending missing-file recovery; a fresh Assignment ID resets both budgets, even at the same path. Continuing the same ID and refreshed observations preserve attempts.
 
-The shared recovery path refreshes native state and checks the expected file immediately before input. New bound turns, changed assignments, loss of eligibility, disconnect and stop cancel stale work without consuming attempts. Exhaustion is reported while observation continues. Each actual submission prints `[codex] sessionref=<ref> recovery=missing-handoff attempt=<attempt>/<limit>` to inherited Runner stderr.
+The shared recovery path refreshes native state and checks the expected file immediately before input. New bound turns, changed assignments, loss of eligibility, disconnect and stop cancel stale work without consuming attempts. Exhaustion is reported while observation continues. Each recovery request prints `[codex] sessionref=<ref> recovery=missing-handoff attempt=<attempt>/<limit>` to inherited Runner stderr.
 
 The complete latest final assistant reply controls human-action suppression, including replies loaded from current snapshots. Literal `[action required]` after leading whitespace cancels pending missing-handoff recovery and consumes no attempt. Commentary, partial answers and markers elsewhere in the reply do not request this pause. A match prints exactly `[codex] sessionref=<ref> ACTION REQUIRED!!!`. Observation continues, and later turns use their own output.
 
@@ -117,13 +129,13 @@ The same enhancement, GUID, assignment, and recovery policy instances survive an
 
 Each failed attempt prints `[codex] sessionref=<ref> observation reconnect failed` to inherited Runner stderr. Diagnostics omit wait times, credentials, close reasons, and native payloads. Binding, readiness, and native retry activity remain quiet. Reconnection never restarts the Agent or shared daemon.
 
-Calling `stop()` immediately disables readiness, observation, reconnect, and recovery, and cancels their timers, waits, and subscriptions. Late native responses cannot restart activity. Stop waits for already-issued readiness input and recovery requests to settle under the Host contract, without submitting replacement input. You can stop a newly returned instance before starting monitoring or readiness.
+Calling `stop()` immediately disables readiness, observation, reconnect, and recovery, and cancels their timers, waits, and subscriptions. Late native responses cannot restart activity. Stop waits for already-issued readiness input and recovery requests to settle under their injected capability contracts, without submitting replacement input. You can stop a newly returned instance before starting monitoring or readiness.
 
 Concurrent stop calls share one cleanup attempt and its outcome. A resource-release failure rejects that attempt; a later `stop()` retries only unfinished releases. Completed releases are recorded, and stop has no additional effect after full success. Cleanup releases only this instance’s native connection and proxy. It preserves the terminal, Agent, shared daemon, unrelated conversations, other enhancements, native history, and persisted configuration.
 
 The factory attempts cleanup when initialization or preflight fails, including partially constructed connections. It preserves the original error if cleanup also fails and reports `initialization cleanup failed` separately to inherited Runner stderr.
 
-Host input and native discovery failures propagate through readiness. Asynchronous recovery Host or final-read failures remain available unchanged through active lifecycle calls and emit a redacted `recovery operation failed` diagnostic. A readiness input failure while stopping emits `readiness input failed`. Operational failures do not make cleanup reject or consume additional recovery attempts; stop rejects only remaining cleanup failures.
+Terminal input and native discovery failures propagate through readiness. Asynchronous recovery callback or final-read failures remain available unchanged through active lifecycle calls and emit a redacted `recovery operation failed` diagnostic. A readiness input failure while stopping emits `readiness input failed`. Operational failures do not make cleanup reject or consume additional recovery attempts; stop rejects only remaining cleanup failures.
 
 ## Implementation and verification
 
@@ -131,16 +143,16 @@ The native boundary invokes `codex app-server daemon start` and `codex app-serve
 
 Protocol references are the [0.166.0 proxy dispatch](https://github.com/openai/codex/blob/rust-v0.166.0/codex-rs/cli/src/main.rs), [native WebSocket transport](https://github.com/openai/codex/blob/rust-v0.166.0/codex-rs/app-server-transport/src/transport/unix_socket.rs), [native project-warning format](https://github.com/openai/codex/blob/rust-v0.166.0/codex-rs/app-server/src/lib.rs), [native hook trust writes](https://github.com/openai/codex/blob/rust-v0.166.0/codex-rs/tui/src/hooks_rpc.rs), and [App Server configuration APIs](https://learn.chatgpt.com/docs/app-server). Trust request and response shapes were checked against the locally generated 0.166.0 protocol schema. The initial snapshot uses the supported full-history `thread/read` response; that native API is deprecated for paginated threads and may require migration in a later native-version update.
 
-Tests exercise the public factory through a bound Host, controlled time, and a scripted native byte bridge. Trust tests verify factory ordering, structured writes, current hook hashes, managed and disabled definitions, policy and warning rejection, mismatched readback, repeated creation and partial cleanup. Git discovery also runs against temporary ordinary and linked checkouts. The package test builds and installs the tarball with the supplied Core contract, compiles a consumer, and checks runtime exports. Installation prefers cached dependencies and fetches missing registry data when needed. CI already targets Ubuntu and Windows; implementation and fixtures use portable Node APIs.
+Tests exercise the public factory through separate bound terminal I/O and recovery callbacks, controlled time, and a scripted native byte bridge. Trust tests verify factory ordering, structured writes, current hook hashes, managed and disabled definitions, policy and warning rejection, mismatched readback, repeated creation and partial cleanup. Git discovery also runs against temporary ordinary and linked checkouts. The package test first installs and imports the runtime without Core. It then installs the development Core artifact to compile a declaration consumer and verify contract versions, export names, and archive integrity. A runtime resolver guard prevents ancestor development dependencies from hiding an accidental Core import. Installation prefers cached dependencies and fetches missing registry data when needed. CI already targets Ubuntu and Windows; implementation and fixtures use portable Node APIs.
 
-Discovery tests cover multiple loaded threads and pages, same-cwd Tabs, nonmatching evidence, delayed loading, failed multiline commands, pending Host input, timeout/retry, notification races, invalid pages, and stop during discovery. Loaded-thread request and response shapes were checked against the locally generated Codex 0.166.0 protocol schema. Joint integration acceptance and registry publication remain outside this ticket.
+Discovery tests cover multiple loaded threads and pages, same-cwd Tabs, nonmatching evidence, delayed loading, failed multiline commands, pending terminal input, timeout/retry, notification races, invalid pages, and stop during discovery. Loaded-thread request and response shapes were checked against the locally generated Codex 0.166.0 protocol schema. Joint integration acceptance and registry publication remain outside this ticket.
 
-Recovery tests cover classifications, inactive system errors, native retry suppression, actual-submission accounting, delay reuse and exhaustion, reset/preservation, final state/file rechecks, cancellation during reads, and Host failure propagation. Their primary seam is the public lifecycle with controlled time and scripted native/file boundaries. Error and status shapes were checked against the locally generated Codex 0.166.0 schema. Real joint integration and publication remain outside this ticket.
+Recovery tests cover classifications, inactive system errors, native retry suppression, recovery-request accounting, delay reuse and exhaustion, reset/preservation, final state/file rechecks, cancellation during reads, and recovery callback failure propagation. Their primary seam is the public lifecycle with controlled time and scripted native/file boundaries. Error and status shapes were checked against the locally generated Codex 0.166.0 schema. Tests also cover same-path Assignment replacement across timers, native reads, file checks, and reattachment, plus fulfilled stale callbacks. Real joint integration and publication remain outside this ticket.
 
 Missing-handoff tests extend that seam with every-attempt delays, independent budgets, file and assignment resets, final-read changes, cancellations, complete final replies, literal marker matching and later-turn reevaluation. Final assistant message and phase shapes were checked against the locally generated Codex 0.166.0 protocol.
 
-Reconnection tests use the baseline Host/native fixtures and controlled time, including with business recovery disabled. They cover fixed unlimited retries, initialization and reattachment failures, timeouts, restored subscriptions, same-ref filtering, GUID continuity, snapshot races, and stop during waits and native requests. Additional policy integration checks cover endings during outages, full-reply human-action handling, and preserved assignment budgets. Real joint integration acceptance and registry publication remain outside this ticket.
+Reconnection tests use the baseline capability/native fixtures and controlled time, including with business recovery disabled. They cover fixed unlimited retries, initialization and reattachment failures, timeouts, restored subscriptions, same-ref filtering, GUID continuity, snapshot races, and stop during waits and native requests. Additional policy integration checks cover endings during outages, full-reply human-action handling, and preserved assignment budgets. Real joint integration acceptance and registry publication remain outside this ticket.
 
-Cleanup tests cover shared stop attempts, transient release failures, partial success without duplicate release, deferred Host input and proxy exit, operational errors during stop, factory failure cleanup, and instance isolation. They use the public lifecycle and portable native substitutes.
+Cleanup tests cover shared stop attempts, transient release failures, partial success without duplicate release, deferred terminal input, recovery callbacks, and proxy exit, operational errors during stop, factory failure cleanup, and instance isolation. They use the public lifecycle and portable native substitutes.
 
 See [code architecture](docs/code-architecture.md), [ticket #2](https://github.com/BuddyLabsCo/issue-runner-agent-codex/issues/2), [ticket #3](https://github.com/BuddyLabsCo/issue-runner-agent-codex/issues/3), [ticket #4](https://github.com/BuddyLabsCo/issue-runner-agent-codex/issues/4), [ticket #5](https://github.com/BuddyLabsCo/issue-runner-agent-codex/issues/5), [ticket #6](https://github.com/BuddyLabsCo/issue-runner-agent-codex/issues/6), and [ticket #7](https://github.com/BuddyLabsCo/issue-runner-agent-codex/issues/7) for ownership and scope.

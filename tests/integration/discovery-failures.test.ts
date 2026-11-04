@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { createEnhancement } from "../../src/index.ts";
-import { boundHost, flush, nativeFixture, thread } from "../fixtures/native.ts";
+import {
+  boundCapabilities,
+  flush,
+  nativeFixture,
+  thread,
+} from "../fixtures/native.ts";
 
 await test("invalid loaded-thread pages reject readiness without guessing and allow retry", async (t) => {
   const native = await nativeFixture(t);
@@ -13,9 +18,10 @@ await test("invalid loaded-thread pages reject readiness without guessing and al
     { data: [], nextCursor: "loop" },
   ]) {
     native.handler = () => page;
-    const bound = boundHost();
+    const bound = boundCapabilities();
     const instance = await createEnhancement(
-      bound.host,
+      bound.io,
+      bound.requestRecovery,
       { cwd: process.cwd(), env: {} },
       {},
     );
@@ -47,7 +53,7 @@ await test("invalid loaded-thread pages reject readiness without guessing and al
 
 await test("GUID detection stops rounds while delayed binding and its current-state read finish", async (t) => {
   const native = await nativeFixture(t);
-  const bound = boundHost();
+  const bound = boundCapabilities();
   let resume!: (value: unknown) => void;
   let current!: (value: unknown) => void;
   let reads = 0;
@@ -76,7 +82,8 @@ await test("GUID detection stops rounds while delayed binding and its current-st
     };
   });
   const instance = await createEnhancement(
-    bound.host,
+    bound.io,
+    bound.requestRecovery,
     { cwd: process.cwd(), env: {} },
     {},
   );
@@ -119,7 +126,7 @@ await test("GUID detection stops rounds while delayed binding and its current-st
 
 await test("a discovered conversation retries failed binding through the same readiness lifecycle", async (t) => {
   const native = await nativeFixture(t);
-  const bound = boundHost();
+  const bound = boundCapabilities();
   let failBinding = true;
   native.handler = (request) => {
     if (request.method === "thread/loaded/list")
@@ -139,7 +146,8 @@ await test("a discovered conversation retries failed binding through the same re
     };
   };
   const instance = await createEnhancement(
-    bound.host,
+    bound.io,
+    bound.requestRecovery,
     { cwd: process.cwd(), env: {} },
     {},
   );
@@ -161,7 +169,7 @@ await test("a discovered conversation retries failed binding through the same re
 await test("matching notifications cannot hide a failed subscription or initial current-state read", async (t) => {
   const native = await nativeFixture(t);
   for (const failingMethod of ["thread/resume", "thread/read"]) {
-    const bound = boundHost();
+    const bound = boundCapabilities();
     const snapshot = () => ({
       thread: thread("found", [
         {
@@ -187,7 +195,8 @@ await test("matching notifications cannot hide a failed subscription or initial 
       };
     });
     const instance = await createEnhancement(
-      bound.host,
+      bound.io,
+      bound.requestRecovery,
       { cwd: process.cwd(), env: {} },
       {},
     );

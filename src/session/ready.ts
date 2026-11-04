@@ -1,4 +1,4 @@
-import type { EnhancementHost } from "issue-runner-core/terminal";
+import type { TerminalIO } from "issue-runner-core/terminal";
 import { Observation, threadState } from "../monitor/state.ts";
 import { NativeClient, object } from "../codex/client.ts";
 import { diagnostic } from "../diagnostics.ts";
@@ -22,20 +22,20 @@ export class Readiness {
   private readonly cancellations = new Set<() => void>();
   private nextRoundAt = 0;
 
-  private readonly host: EnhancementHost;
+  private readonly io: TerminalIO;
   private readonly client: NativeClient;
   private readonly observation: Observation;
   private readonly guid: string;
   private readonly timeout: number;
 
   constructor(
-    host: EnhancementHost,
+    io: TerminalIO,
     client: NativeClient,
     observation: Observation,
     guid: string,
     timeout: number,
   ) {
-    this.host = host;
+    this.io = io;
     this.client = client;
     this.observation = observation;
     this.guid = guid;
@@ -60,7 +60,7 @@ export class Readiness {
         this.observation.changes.delete(changed);
         this.cancellations.delete(cancel);
         if (errors.length) {
-          // Host rejection values propagate unchanged across this boundary.
+          // Terminal I/O rejection values propagate unchanged across this boundary.
           // eslint-disable-next-line @typescript-eslint/prefer-promise-reject-errors
           reject(errors[0]);
         } else resolve(this.observation.sessionref!);
@@ -90,7 +90,7 @@ export class Readiness {
           }
           this.round = Promise.resolve().then(() => {
             if (this.cancellations.size)
-              return this.host.submitText(`!${this.guid}`);
+              return this.io.submitText(`!${this.guid}`);
           });
         }
         const round = this.round;

@@ -2,11 +2,17 @@ import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import { test } from "node:test";
 import { createEnhancement } from "../../src/index.ts";
-import { boundHost, flush, nativeFixture } from "../fixtures/native.ts";
+import { boundCapabilities, flush, nativeFixture } from "../fixtures/native.ts";
 import { failedThread, recoveryFixture } from "../fixtures/recovery.ts";
 
 await test("assignment, native retry and stop during the file check prevent stale submission", async (t) => {
-  for (const trigger of ["assignment", "retry", "stop", "file-error"]) {
+  for (const trigger of [
+    "assignment",
+    "same-path",
+    "retry",
+    "stop",
+    "file-error",
+  ]) {
     await t.test(trigger, async (t) => {
       const { instance, native, bound, expectedFile } =
         await recoveryFixture(t);
@@ -27,7 +33,13 @@ await test("assignment, native retry and stop during the file check prevent stal
       t.mock.timers.tick(10_000);
       await checked;
       let stopping: Promise<void> | undefined;
-      if (trigger === "assignment") instance.onAssignment("replacement.json");
+      if (trigger === "assignment")
+        instance.onAssignment({
+          id: "replacement.json",
+          expectedFile: "replacement.json",
+        });
+      else if (trigger === "same-path")
+        instance.onAssignment({ id: "assignment-2", expectedFile });
       else if (trigger === "retry")
         native.notify("error", {
           threadId: "known",
@@ -63,13 +75,13 @@ await test("ordinary Host errors remain diagnosable without failing cleanup", as
   for (const synchronous of [true, false]) {
     await t.test(String(synchronous), async (t) => {
       const native = await nativeFixture(t);
-      const bound = boundHost();
+      const bound = boundCapabilities();
       const failure = new Error("Host failure");
       let submitted!: () => void;
       const submission = new Promise<void>((resolve) => {
         submitted = resolve;
       });
-      bound.host.requestRecovery = () => {
+      bound.recovery.request = () => {
         submitted();
         if (synchronous) throw failure;
         return Promise.reject(failure);
@@ -79,12 +91,16 @@ await test("ordinary Host errors remain diagnosable without failing cleanup", as
         Promise.reject(Object.assign(new Error("absent"), { code: "ENOENT" })),
       );
       const instance = await createEnhancement(
-        bound.host,
+        bound.io,
+        bound.requestRecovery,
         { cwd: process.cwd(), env: {} },
         { retryDelay: [0] },
       );
       t.mock.timers.enable({ apis: ["setTimeout"] });
-      instance.onAssignment("handoff.json");
+      instance.onAssignment({
+        id: "handoff.json",
+        expectedFile: "handoff.json",
+      });
       await instance.startMonitoring("known");
       t.mock.timers.tick(0);
       await submission;
@@ -94,7 +110,8 @@ await test("ordinary Host errors remain diagnosable without failing cleanup", as
         (error) => error === failure,
       );
       assert.throws(
-        () => instance.onAssignment("next.json"),
+        () =>
+          instance.onAssignment({ id: "next.json", expectedFile: "next.json" }),
         (error) => error === failure,
       );
       await instance.stop();
@@ -109,7 +126,7 @@ await test("observation and file-read errors propagate without being retried as 
   for (const source of ["read", "file"]) {
     await t.test(source, async (t) => {
       const native = await nativeFixture(t);
-      const bound = boundHost();
+      const bound = boundCapabilities();
       const stderr: string[] = [];
       t.mock.method(process.stderr, "write", (value: string) => {
         if (value.startsWith("[codex]")) stderr.push(value);
@@ -117,12 +134,16 @@ await test("observation and file-read errors propagate without being retried as 
       });
       native.handler = () => ({ thread: failedThread() });
       const instance = await createEnhancement(
-        bound.host,
+        bound.io,
+        bound.requestRecovery,
         { cwd: process.cwd(), env: {} },
         {},
       );
       t.mock.timers.enable({ apis: ["setTimeout"] });
-      instance.onAssignment("handoff.json");
+      instance.onAssignment({
+        id: "handoff.json",
+        expectedFile: "handoff.json",
+      });
       await instance.startMonitoring("known");
       const failure = Object.assign(new Error("file permission denied"), {
         code: "EACCES",
@@ -163,7 +184,7 @@ await test("notifications and repeated final snapshots preserve attempts, delay 
   });
   await flush();
   for (const [index, delay] of [10_000, 20_000, 40_000].entries()) {
-    instance.onAssignment(expectedFile);
+    instance.onAssignment({ id: "assignment-1", expectedFile });
     native.notify("thread/status/changed", {
       threadId: "known",
       status: state.snapshot.status,
@@ -197,9 +218,9 @@ await test("stop awaits a submitted Host request and does not schedule more reco
   const pending = new Promise<void>((resolve) => {
     release = resolve;
   });
-  const request = bound.host.requestRecovery.bind(bound.host);
-  bound.host.requestRecovery = async () => {
-    await request();
+  const request = bound.recovery.request;
+  bound.recovery.request = async (id) => {
+    await request(id);
     await pending;
   };
   await instance.startMonitoring("known");
@@ -228,9 +249,9 @@ await test("renewed eligibility starts its delay while a canceled final check is
       const recovery = new Promise<void>((resolve) => {
         finishRecovery = resolve;
       });
-      const request = bound.host.requestRecovery.bind(bound.host);
-      bound.host.requestRecovery = async () => {
-        await request();
+      const request = bound.recovery.request;
+      bound.recovery.request = async (id) => {
+        await request(id);
         await recovery;
       };
       await instance.startMonitoring("known");
@@ -294,4 +315,42 @@ await test("renewed eligibility starts its delay while a canceled final check is
       assert.equal(bound.recoveries, 1);
     });
   }
+});
+
+await test("a fulfilled stale recovery request retains its origin and leaves the next Assignment's budget intact", async (t) => {
+  const { instance, bound, expectedFile, stderr } = await recoveryFixture(t, {
+    retryLimit: 1,
+    retryDelay: [1],
+  });
+  let release!: () => void;
+  const pending = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const request = bound.recovery.request;
+  bound.recovery.request = async (id) => {
+    await request(id);
+    if (id === "assignment-1") await pending;
+  };
+  await instance.startMonitoring("known");
+  t.mock.timers.tick(1_000);
+  await flush();
+  assert.deepEqual(bound.recoveryIds, ["assignment-1"]);
+  instance.onAssignment({ id: "assignment-2", expectedFile });
+  t.mock.timers.tick(10_000);
+  await flush();
+  assert.deepEqual(bound.recoveryIds, ["assignment-1"]);
+  release();
+  await flush();
+  t.mock.timers.tick(999);
+  await flush();
+  assert.deepEqual(bound.recoveryIds, ["assignment-1"]);
+  t.mock.timers.tick(1);
+  await flush();
+  assert.deepEqual(bound.recoveryIds, ["assignment-1", "assignment-2"]);
+  assert.equal(stderr.filter((line) => line.includes("attempt=1/1")).length, 2);
+  t.mock.timers.tick(10_000);
+  await flush();
+  assert.deepEqual(bound.recoveryIds, ["assignment-1", "assignment-2"]);
+  assert.deepEqual(bound.inputs, []);
+  await instance.stop();
 });

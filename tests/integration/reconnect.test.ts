@@ -1,18 +1,24 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { createEnhancement } from "../../src/index.ts";
-import { boundHost, flush, nativeFixture, thread } from "../fixtures/native.ts";
+import {
+  boundCapabilities,
+  flush,
+  nativeFixture,
+  thread,
+} from "../fixtures/native.ts";
 
 await test("observation retries every ten seconds without a business budget or daemon restart", async (t) => {
   const native = await nativeFixture(t);
-  const bound = boundHost();
+  const bound = boundCapabilities();
   const stderr: string[] = [];
   t.mock.method(process.stderr, "write", (value: string) => {
     if (value.startsWith("[codex]")) stderr.push(value);
     return true;
   });
   const instance = await createEnhancement(
-    bound.host,
+    bound.io,
+    bound.requestRecovery,
     { cwd: process.cwd(), env: { RECONNECT_FIXTURE: "retained" } },
     { retryLimit: 0, retryDelay: [0] },
   );
@@ -60,9 +66,10 @@ await test("observation retries every ten seconds without a business budget or d
 
 await test("reattachment stays unavailable until refreshed and retains the ref, GUID and notification filtering", async (t) => {
   const native = await nativeFixture(t);
-  const bound = boundHost();
+  const bound = boundCapabilities();
   const instance = await createEnhancement(
-    bound.host,
+    bound.io,
+    bound.requestRecovery,
     { cwd: process.cwd(), env: {} },
     { retryLimit: 0 },
   );
@@ -145,7 +152,8 @@ await test("transport loss during reattachment prints one reconnect failure and 
     return true;
   });
   const instance = await createEnhancement(
-    boundHost().host,
+    boundCapabilities().io,
+    boundCapabilities().requestRecovery,
     { cwd: process.cwd(), env: {} },
     {},
   );
@@ -177,9 +185,10 @@ await test("transport loss during reattachment prints one reconnect failure and 
 
 await test("a stale refresh cannot restore observation after notifications arrive during reattachment", async (t) => {
   const native = await nativeFixture(t);
-  const bound = boundHost();
+  const bound = boundCapabilities();
   const instance = await createEnhancement(
-    bound.host,
+    bound.io,
+    bound.requestRecovery,
     { cwd: process.cwd(), env: {} },
     { retryLimit: 0 },
   );
@@ -234,7 +243,8 @@ await test("failed subscription or snapshot refresh retries after ten seconds wi
         return true;
       });
       const instance = await createEnhancement(
-        boundHost().host,
+        boundCapabilities().io,
+        boundCapabilities().requestRecovery,
         { cwd: process.cwd(), env: {} },
         { retryLimit: 0 },
       );
@@ -284,9 +294,10 @@ await test("failed subscription or snapshot refresh retries after ten seconds wi
 
 await test("reconnection before GUID discovery restores availability without adopting a conversation", async (t) => {
   const native = await nativeFixture(t);
-  const bound = boundHost();
+  const bound = boundCapabilities();
   const instance = await createEnhancement(
-    bound.host,
+    bound.io,
+    bound.requestRecovery,
     { cwd: process.cwd(), env: {} },
     { retryLimit: 0 },
   );

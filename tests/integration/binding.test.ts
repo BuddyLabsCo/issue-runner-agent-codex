@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { createEnhancement } from "../../src/index.ts";
-import { boundHost, flush, nativeFixture, thread } from "../fixtures/native.ts";
+import {
+  boundCapabilities,
+  flush,
+  nativeFixture,
+  thread,
+} from "../fixtures/native.ts";
 
 await test("a status notification during binding preserves initial history and readiness evidence", async (t) => {
   const native = await nativeFixture(t);
@@ -15,9 +20,10 @@ await test("a status notification during binding preserves initial history and r
           })
         : {};
   });
-  const bound = boundHost();
+  const bound = boundCapabilities();
   const instance = await createEnhancement(
-    bound.host,
+    bound.io,
+    bound.requestRecovery,
     { cwd: process.cwd(), env: {} },
     {},
   );
@@ -74,7 +80,8 @@ await test("failed binding initialization can be retried for the same exact conv
       return request.method.startsWith("thread/") ? { thread: thread() } : {};
     };
     const instance = await createEnhancement(
-      boundHost().host,
+      boundCapabilities().io,
+      boundCapabilities().requestRecovery,
       { cwd: process.cwd(), env: {} },
       {},
     );
@@ -127,7 +134,8 @@ await test("same-ref monitoring calls wait for the pending subscription and init
     };
   });
   const instance = await createEnhancement(
-    boundHost().host,
+    boundCapabilities().io,
+    boundCapabilities().requestRecovery,
     { cwd: process.cwd(), env: {} },
     {},
   );

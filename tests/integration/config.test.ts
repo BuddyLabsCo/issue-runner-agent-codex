@@ -1,21 +1,17 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import type {
-  EnhancementHost,
-  EnhancementModule,
-} from "issue-runner-core/terminal";
+import type { TerminalIO, EnhancementModule } from "issue-runner-core/terminal";
 import * as enhancement from "../../src/index.ts";
 
 const module: EnhancementModule = enhancement;
-const host: EnhancementHost = {
+const io: TerminalIO = {
   read: () => Promise.resolve(""),
   submitText: () => Promise.resolve(),
   sendKeys: () => Promise.resolve(),
-  requestRecovery: () => Promise.resolve(),
 };
 
 await test("exports the approved Core contract and rejects invalid options before native startup", async () => {
-  assert.equal(module.contractVersion, 1);
+  assert.equal(module.contractVersion, 2);
   for (const config of [
     null,
     [],
@@ -34,7 +30,12 @@ await test("exports the approved Core contract and rejects invalid options befor
     { handoffRecoveryDelaySeconds: NaN },
   ]) {
     await assert.rejects(
-      module.createEnhancement(host, { cwd: process.cwd(), env: {} }, config),
+      module.createEnhancement(
+        io,
+        () => Promise.resolve(),
+        { cwd: process.cwd(), env: {} },
+        config,
+      ),
       /enhancements/,
     );
   }
@@ -49,7 +50,12 @@ await test("explicit null option values and sparse delays are rejected instead o
     { retryDelay: new Array<number>(1) },
   ])
     await assert.rejects(
-      module.createEnhancement(host, { cwd: process.cwd(), env: {} }, config),
+      module.createEnhancement(
+        io,
+        () => Promise.resolve(),
+        { cwd: process.cwd(), env: {} },
+        config,
+      ),
       /enhancements/,
     );
 });

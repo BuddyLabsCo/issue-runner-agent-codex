@@ -1,13 +1,14 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { createEnhancement } from "../../src/index.ts";
-import { boundHost, flush, nativeFixture } from "../fixtures/native.ts";
+import { boundCapabilities, flush, nativeFixture } from "../fixtures/native.ts";
 
 await test("observes only the supplied conversation and accepts a failed concatenated userShell marker", async (t) => {
   const native = await nativeFixture(t);
-  const bound = boundHost();
+  const bound = boundCapabilities();
   const instance = await createEnhancement(
-    bound.host,
+    bound.io,
+    bound.requestRecovery,
     { cwd: process.cwd(), env: { CODEX_HOME: "injected-home" } },
     { unrelatedOption: true },
   );
@@ -78,9 +79,10 @@ await test("observes only the supplied conversation and accepts a failed concate
 
 await test("each wait has a deadline and retries on the same instance use its GUID every two seconds", async (t) => {
   const native = await nativeFixture(t);
-  const bound = boundHost();
+  const bound = boundCapabilities();
   const instance = await createEnhancement(
-    bound.host,
+    bound.io,
+    bound.requestRecovery,
     { cwd: process.cwd(), env: {} },
     { readyTimeout: 5 },
   );
@@ -127,18 +129,19 @@ await test("each wait has a deadline and retries on the same instance use its GU
 
 await test("readiness finishes an issued input round before returning, including after a timed-out wait", async (t) => {
   const native = await nativeFixture(t);
-  const bound = boundHost();
+  const bound = boundCapabilities();
   let complete!: () => void;
   const inputRound = new Promise<void>((resolve) => {
     complete = resolve;
   });
-  const submit = bound.host.submitText.bind(bound.host);
-  bound.host.submitText = async (text) => {
+  const submit = bound.io.submitText.bind(bound.io);
+  bound.io.submitText = async (text) => {
     await submit(text);
     await inputRound;
   };
   const instance = await createEnhancement(
-    bound.host,
+    bound.io,
+    bound.requestRecovery,
     { cwd: process.cwd(), env: {} },
     { readyTimeout: 3 },
   );
@@ -171,9 +174,10 @@ await test("readiness finishes an issued input round before returning, including
 
 await test("unbound instances never adopt notification-only evidence and stop invalidates readiness repeatably", async (t) => {
   const native = await nativeFixture(t);
-  const bound = boundHost();
+  const bound = boundCapabilities();
   const instance = await createEnhancement(
-    bound.host,
+    bound.io,
+    bound.requestRecovery,
     { cwd: process.cwd(), env: {} },
     {},
   );
@@ -212,14 +216,15 @@ await test("disconnect rejects pending readiness, is redacted on stderr, and sto
     stderr.push(value);
     return true;
   });
-  const bound = boundHost();
+  const bound = boundCapabilities();
   const instance = await createEnhancement(
-    bound.host,
+    bound.io,
+    bound.requestRecovery,
     { cwd: process.cwd(), env: {} },
     {},
   );
   await instance.startMonitoring("known");
-  instance.onAssignment("handoff.json");
+  instance.onAssignment({ id: "handoff.json", expectedFile: "handoff.json" });
   t.mock.timers.enable({ apis: ["setTimeout"] });
   const waiting = assert.rejects(instance.waitUntilReady(), /unavailable/);
   await flush();
@@ -241,20 +246,21 @@ await test("disconnect rejects pending readiness, is redacted on stderr, and sto
 
 await test("Host input errors propagate and a retry can use the same observation", async (t) => {
   const native = await nativeFixture(t);
-  const bound = boundHost();
+  const bound = boundCapabilities();
   const failure = new Error("Host failed");
-  const submit = bound.host.submitText.bind(bound.host);
-  bound.host.submitText = () => {
+  const submit = bound.io.submitText.bind(bound.io);
+  bound.io.submitText = () => {
     throw failure;
   };
   const instance = await createEnhancement(
-    bound.host,
+    bound.io,
+    bound.requestRecovery,
     { cwd: process.cwd(), env: {} },
     {},
   );
   await instance.startMonitoring("known");
   await assert.rejects(instance.waitUntilReady(), (error) => error === failure);
-  bound.host.submitText = submit;
+  bound.io.submitText = submit;
   const waiting = instance.waitUntilReady();
   await flush();
   native.notify("item/completed", {
@@ -281,15 +287,17 @@ await test("two Hosts keep distinct GUIDs and exact conversation bindings", asyn
           },
         }
       : {};
-  const first = boundHost();
-  const second = boundHost();
+  const first = boundCapabilities();
+  const second = boundCapabilities();
   const a = await createEnhancement(
-    first.host,
+    first.io,
+    first.requestRecovery,
     { cwd: process.cwd(), env: {} },
     {},
   );
   const b = await createEnhancement(
-    second.host,
+    second.io,
+    second.requestRecovery,
     { cwd: process.cwd(), env: {} },
     {},
   );
@@ -339,13 +347,17 @@ await test("assignment replacement and bound turn start invalidate pending snaps
             })
           : {};
     });
-    const bound = boundHost();
+    const bound = boundCapabilities();
     const instance = await createEnhancement(
-      bound.host,
+      bound.io,
+      bound.requestRecovery,
       { cwd: process.cwd(), env: {} },
       {},
     );
-    instance.onAssignment("exact/../assignment.json");
+    instance.onAssignment({
+      id: "exact/../assignment.json",
+      expectedFile: "exact/../assignment.json",
+    });
     const starting = instance.startMonitoring("known");
     await received;
     const ready = instance.waitUntilReady();
@@ -357,11 +369,13 @@ await test("assignment replacement and bound turn start invalidate pending snaps
         turn: { id: "new-turn", status: "inProgress", items: [] },
       });
     else
-      instance.onAssignment(
-        change === "continuation"
-          ? "exact/../assignment.json"
-          : "assignment.json",
-      );
+      instance.onAssignment({
+        id:
+          change === "continuation"
+            ? "exact/../assignment.json"
+            : "replacement",
+        expectedFile: "exact/../assignment.json",
+      });
     await flush();
     let resolved = false;
     void ready.then(() => {
@@ -401,9 +415,10 @@ await test("assignment replacement and bound turn start invalidate pending snaps
 
 await test("marker-like model output, other commands and unrelated turns never establish readiness", async (t) => {
   const native = await nativeFixture(t);
-  const bound = boundHost();
+  const bound = boundCapabilities();
   const instance = await createEnhancement(
-    bound.host,
+    bound.io,
+    bound.requestRecovery,
     { cwd: process.cwd(), env: {} },
     {},
   );
@@ -432,9 +447,10 @@ await test("marker-like model output, other commands and unrelated turns never e
 
 await test("stop before input dispatch cancels the queued marker round", async (t) => {
   await nativeFixture(t);
-  const bound = boundHost();
+  const bound = boundCapabilities();
   const instance = await createEnhancement(
-    bound.host,
+    bound.io,
+    bound.requestRecovery,
     { cwd: process.cwd(), env: {} },
     {},
   );
@@ -447,9 +463,10 @@ await test("stop before input dispatch cancels the queued marker round", async (
 
 await test("overlapping waits retain separate deadlines while sharing marker input rounds", async (t) => {
   const native = await nativeFixture(t);
-  const bound = boundHost();
+  const bound = boundCapabilities();
   const instance = await createEnhancement(
-    bound.host,
+    bound.io,
+    bound.requestRecovery,
     { cwd: process.cwd(), env: {} },
     { readyTimeout: 3 },
   );

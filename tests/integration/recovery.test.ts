@@ -2,16 +2,10 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { recoveryFixture, failedThread } from "../fixtures/recovery.ts";
 import { createEnhancement } from "../../src/index.ts";
-import { boundHost, flush, nativeFixture } from "../fixtures/native.ts";
+import { boundCapabilities, flush, nativeFixture } from "../fixtures/native.ts";
 
-await test("unknown final errors recover through the argument-free Host after the default delay", async (t) => {
+await test("unknown final errors recover through the Assignment-aware recovery after the default delay", async (t) => {
   const { native, bound, instance, stderr } = await recoveryFixture(t);
-  const calls: unknown[][] = [];
-  const request = bound.host.requestRecovery.bind(bound.host);
-  bound.host.requestRecovery = (...args: unknown[]) => {
-    calls.push(args);
-    return request();
-  };
   await instance.startMonitoring("known");
   t.mock.timers.tick(9_999);
   await flush();
@@ -20,7 +14,7 @@ await test("unknown final errors recover through the argument-free Host after th
   t.mock.timers.tick(1);
   await flush();
   assert.equal(bound.recoveries, 1);
-  assert.deepEqual(calls, [[]]);
+  assert.deepEqual(bound.recoveryIds, ["assignment-1"]);
   assert.deepEqual(bound.inputs, []);
   assert.deepEqual(stderr, [
     "[codex] sessionref=known recovery=error attempt=1/3\n",
@@ -137,16 +131,17 @@ await test("active, incomplete, unloaded and native-retrying states never receiv
 
 await test("unbound and unassigned instances never schedule business recovery", async (t) => {
   const native = await nativeFixture(t);
-  const bound = boundHost();
+  const bound = boundCapabilities();
   native.handler = () => ({ thread: failedThread() });
   const instance = await createEnhancement(
-    bound.host,
+    bound.io,
+    bound.requestRecovery,
     { cwd: process.cwd(), env: {} },
     {},
   );
   try {
     t.mock.timers.enable({ apis: ["setTimeout"] });
-    instance.onAssignment("handoff.json");
+    instance.onAssignment({ id: "handoff.json", expectedFile: "handoff.json" });
     await instance.startMonitoring();
     t.mock.timers.tick(100_000);
     await flush();
@@ -155,7 +150,8 @@ await test("unbound and unassigned instances never schedule business recovery", 
     await instance.stop();
   }
   const second = await createEnhancement(
-    bound.host,
+    bound.io,
+    bound.requestRecovery,
     { cwd: process.cwd(), env: {} },
     {},
   );
