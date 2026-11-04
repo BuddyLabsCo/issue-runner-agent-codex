@@ -1,5 +1,9 @@
 import type { TerminalIO } from "issue-runner-core/terminal";
-import { Observation, threadState } from "../monitor/state.ts";
+import {
+  Observation,
+  threadState,
+  type ThreadState,
+} from "../monitor/state.ts";
 import { NativeClient, object } from "../codex/client.ts";
 import { diagnostic } from "../diagnostics.ts";
 
@@ -19,6 +23,7 @@ function containsMarker(
 export class Readiness {
   private round: Promise<void> | undefined;
   private discovery: Promise<void> | undefined;
+  private discoveryFailure: { cause: unknown } | undefined;
   private readonly cancellations = new Set<() => void>();
   private nextRoundAt = 0;
 
@@ -43,7 +48,10 @@ export class Readiness {
   }
 
   wait(): Promise<string> {
-    if (this.cancellations.size === 0 && !this.round) this.nextRoundAt = 0;
+    if (this.cancellations.size === 0) {
+      this.discoveryFailure = undefined;
+      if (!this.round) this.nextRoundAt = 0;
+    }
     return this.run();
   }
 
@@ -119,7 +127,15 @@ export class Readiness {
         deadline = setTimeout(() => {
           remaining -= seconds;
           if (remaining > 0) scheduleDeadline();
-          else finish(new Error("Codex readiness timed out"));
+          else
+            finish(
+              new Error(
+                this.discoveryFailure
+                  ? "Codex readiness timed out; candidate history read failed"
+                  : "Codex readiness timed out",
+                this.discoveryFailure,
+              ),
+            );
         }, seconds * 1_000);
       };
       scheduleDeadline();
@@ -144,6 +160,21 @@ export class Readiness {
     return this.discovery;
   }
 
+  private async readCandidate(ref: string): Promise<ThreadState | undefined> {
+    let response: unknown;
+    try {
+      response = await this.client.request("thread/read", {
+        threadId: ref,
+        includeTurns: true,
+      });
+    } catch (error) {
+      // A new conversation's history may not exist until its first GUID shell runs.
+      this.discoveryFailure = { cause: error };
+      return undefined;
+    }
+    return threadState(response, ref);
+  }
+
   private async scanLoaded(): Promise<void> {
     let cursor: string | undefined;
     const cursors = new Set<string>();
@@ -166,19 +197,14 @@ export class Readiness {
       )
         throw new Error("Invalid Codex loaded threads response");
       for (const ref of page.data as string[]) {
-        const snapshot = threadState(
-          await this.client.request("thread/read", {
-            threadId: ref,
-            includeTurns: true,
-          }),
-          ref,
-        );
+        const snapshot = await this.readCandidate(ref);
         if (
           this.cancellations.size === 0 ||
           !this.observation.available ||
           this.observation.sessionref
         )
           return;
+        if (!snapshot) continue;
         const items = snapshot.turns.flatMap((turn) => turn.items);
         if (!containsMarker(items, this.guid)) continue;
         await this.observation.bind(ref, items);
