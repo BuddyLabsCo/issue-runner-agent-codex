@@ -54,11 +54,13 @@ Call `startMonitoring` before submitting the configured Agent command. When resu
 
 For a new conversation, omit the ref: `await enhancement.startMonitoring()`. During readiness, the enhancement enumerates loaded threads through `thread/loaded/list` and inspects their native userShell commands. Only a command containing this Tab's GUID identifies the conversation. The enhancement binds its enclosing threadId, reads current state through the same observation path, and returns that ref. It never selects by cwd, thread order, recency, filesystem markers, or model output. Tabs sharing a cwd have distinct GUIDs. Readiness rounds and native notifications trigger discovery scans; enumeration stops after binding.
 
+A candidate's `thread/read` RPC failure does not end discovery. The scan continues through the remaining candidates and pages; later readiness rounds or notifications retry discovery. This lets a new conversation execute its first GUID shell before its history becomes readable. No native error code or message determines whether discovery continues.
+
 Each readiness wait submits `!` followed by the instance's GUID through `io.submitText`, then repeats after two seconds when the previous round has finished. The terminal adapter retains its configured submit key. A userShell command containing the GUID proves readiness, including failed, nonzero, concatenated, or multiline commands. Model output does not prove readiness.
 
 Detection stops marker scheduling immediately. Readiness waits for the subscription, initial current-state read, and any issued input round to finish. Binding failures reject readiness.
 
-Each wait has its own deadline. Timeout rejects without claiming readiness. Retry `waitUntilReady()` on the same instance: it retains its GUID, any discovered ref, and observation, and does not replay the Agent command. Overlapping waits share input rounds and retain separate deadlines.
+Each wait has its own deadline. Timeout rejects without claiming readiness. If candidate history reads failed, the timeout message identifies that failure and retains the last redacted error as its cause. Retry `waitUntilReady()` on the same instance: it retains its GUID, any discovered ref, and observation, and does not replay the Agent command. A new wait after all prior waits finish clears the previous discovery error. Overlapping waits share input rounds and retain separate deadlines.
 
 `onAssignment({ id, expectedFile })` stores the ID and exact path synchronously. A fresh ID replaces the Assignment, cancels pending work, and resets both recovery budgets even when the path is unchanged. Repeating the same ID and path preserves its context. Recovery candidates retain the originating Assignment across timers, native refreshes, file checks, and reconnection. Assignments are not mapped to native turns. New bound turns, Assignment replacement, disconnect, and stop invalidate stale asynchronous observations. Readiness markers never create an Assignment.
 
@@ -135,7 +137,7 @@ Concurrent stop calls share one cleanup attempt and its outcome. A resource-rele
 
 The factory attempts cleanup when initialization or preflight fails, including partially constructed connections. It preserves the original error if cleanup also fails and reports `initialization cleanup failed` separately to inherited Runner stderr.
 
-Terminal input and native discovery failures propagate through readiness. Asynchronous recovery callback or final-read failures remain available unchanged through active lifecycle calls and emit a redacted `recovery operation failed` diagnostic. A readiness input failure while stopping emits `readiness input failed`. Operational failures do not make cleanup reject or consume additional recovery attempts; stop rejects only remaining cleanup failures.
+Terminal input failures, loaded-thread enumeration failures, invalid history responses, and binding failures propagate through readiness. Candidate history RPC failures remain pending until discovery succeeds or readiness times out. Asynchronous recovery callback or final-read failures remain available unchanged through active lifecycle calls and emit a redacted `recovery operation failed` diagnostic. A readiness input failure while stopping emits `readiness input failed`. Operational failures do not make cleanup reject or consume additional recovery attempts; stop rejects only remaining cleanup failures.
 
 ## Implementation and verification
 
