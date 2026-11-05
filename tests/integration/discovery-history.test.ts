@@ -3,6 +3,7 @@ import { test } from "node:test";
 import { createEnhancement } from "../../src/index.ts";
 import {
   boundCapabilities,
+  bootstrapCapabilities,
   flush,
   nativeFixture,
   thread,
@@ -14,7 +15,7 @@ for (const rpcError of [
 ]) {
   await test(`candidate history failures preserve discovery rounds: ${rpcError.code}`, async (t) => {
     const native = await nativeFixture(t);
-    const bound = boundCapabilities();
+    const bound = bootstrapCapabilities(native, "target");
     let available = false;
     native.handler = (request) => {
       if (request.method === "thread/loaded/list")
@@ -75,8 +76,11 @@ for (const rpcError of [
       assert.equal(bound.inputs.length, 1);
       t.mock.timers.tick(1);
       assert.equal(await waiting, "target");
-      assert.equal(bound.inputs.length, 2);
-      assert.equal(new Set(bound.inputs).size, 1);
+      assert.equal(bound.inputs.length, 3);
+      assert.equal(
+        new Set(bound.inputs.filter((text) => text.startsWith("!"))).size,
+        1,
+      );
       assert.deepEqual(
         native.requests
           .filter(({ method }) => method === "thread/resume")
@@ -92,7 +96,7 @@ for (const rpcError of [
 
 await test("persistent history failures retain a redacted timeout cause and do not leak into the next wait", async (t) => {
   const native = await nativeFixture(t);
-  const bound = boundCapabilities();
+  const bound = bootstrapCapabilities(native, "target");
   let failing = true;
   let matching = false;
   native.handler = (request) => {
@@ -152,7 +156,10 @@ await test("persistent history failures retain a redacted timeout cause and do n
     });
     matching = true;
     assert.equal(await instance.waitUntilReady(), "target");
-    assert.equal(new Set(bound.inputs).size, 1);
+    assert.equal(
+      new Set(bound.inputs.filter((text) => text.startsWith("!"))).size,
+      1,
+    );
   } finally {
     await instance.stop();
   }

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { createEnhancement } from "../../src/index.ts";
 import {
+  bootstrapCapabilities,
   boundCapabilities,
   flush,
   nativeFixture,
@@ -66,7 +67,7 @@ await test("observation retries every ten seconds without a business budget or d
 
 await test("reattachment stays unavailable until refreshed and retains the ref, GUID and notification filtering", async (t) => {
   const native = await nativeFixture(t);
-  const bound = boundCapabilities();
+  const bound = bootstrapCapabilities(native);
   const instance = await createEnhancement(
     bound.io,
     bound.requestRecovery,

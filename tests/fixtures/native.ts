@@ -53,6 +53,27 @@ export function boundCapabilities() {
   };
 }
 
+export function bootstrapCapabilities(
+  native: Pick<Awaited<ReturnType<typeof nativeFixture>>, "notify">,
+  ref = "known",
+) {
+  const bound = boundCapabilities();
+  const submit = bound.io.submitText.bind(bound.io);
+  bound.io.submitText = async (text) => {
+    await submit(text);
+    if (text.startsWith("!")) return;
+    native.notify("turn/started", {
+      threadId: ref,
+      turn: {
+        id: "bootstrap",
+        status: "inProgress",
+        items: [{ type: "userMessage", content: [{ type: "text", text }] }],
+      },
+    });
+  };
+  return bound;
+}
+
 export function thread(id = "known", items: unknown[] = []) {
   return {
     id,

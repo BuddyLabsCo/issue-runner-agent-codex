@@ -3,6 +3,7 @@ import { test } from "node:test";
 import { createEnhancement } from "../../src/index.ts";
 import {
   boundCapabilities,
+  bootstrapCapabilities,
   flush,
   nativeFixture,
   thread,
@@ -10,7 +11,7 @@ import {
 
 await test("discovers the GUID's enclosing loaded thread across same-cwd threads and pages", async (t) => {
   const native = await nativeFixture(t);
-  const bound = boundCapabilities();
+  const bound = bootstrapCapabilities(native, "matching");
   native.handler = (request) => {
     if (request.method === "thread/loaded/list")
       return request.params.cursor
@@ -77,7 +78,7 @@ await test("discovers the GUID's enclosing loaded thread across same-cwd threads
       ).length,
       2,
     );
-    assert.equal(bound.inputs.length, 1);
+    assert.equal(bound.inputs.length, 2);
     assert.equal(bound.recoveries, 0);
     assert.deepEqual(bound.keys, []);
     assert.ok(
@@ -93,7 +94,7 @@ await test("discovers the GUID's enclosing loaded thread across same-cwd threads
 
 await test("delayed discovery keeps two-second rounds and stops enumeration after binding", async (t) => {
   const native = await nativeFixture(t);
-  const bound = boundCapabilities();
+  const bound = bootstrapCapabilities(native, "delayed");
   let loaded = false;
   native.handler = (request) => {
     if (request.method === "thread/loaded/list")
@@ -126,8 +127,11 @@ await test("delayed discovery keeps two-second rounds and stops enumeration afte
     assert.equal(bound.inputs.length, 1);
     t.mock.timers.tick(1);
     assert.equal(await waiting, "delayed");
-    assert.equal(bound.inputs.length, 2);
-    assert.equal(new Set(bound.inputs).size, 1);
+    assert.equal(bound.inputs.length, 3);
+    assert.equal(
+      new Set(bound.inputs.filter((text) => text.startsWith("!"))).size,
+      1,
+    );
     const requests = native.requests.length;
     native.notify("turn/started", {
       threadId: "other",
@@ -137,7 +141,7 @@ await test("delayed discovery keeps two-second rounds and stops enumeration afte
     await flush();
     assert.equal(await instance.waitUntilReady(), "delayed");
     assert.equal(native.requests.length, requests);
-    assert.equal(bound.inputs.length, 2);
+    assert.equal(bound.inputs.length, 3);
   } finally {
     await instance.stop();
   }
@@ -145,7 +149,7 @@ await test("delayed discovery keeps two-second rounds and stops enumeration afte
 
 await test("discovery notices evidence while a Host round is pending and waits for its completion", async (t) => {
   const native = await nativeFixture(t);
-  const bound = boundCapabilities();
+  const bound = bootstrapCapabilities(native, "pending-input");
   let complete!: () => void;
   const round = new Promise<void>((resolve) => {
     complete = resolve;
@@ -212,7 +216,7 @@ await test("discovery notices evidence while a Host round is pending and waits f
     assert.equal(await waiting, "pending-input");
     t.mock.timers.tick(20_000);
     await flush();
-    assert.equal(bound.inputs.length, 1);
+    assert.equal(bound.inputs.length, 2);
   } finally {
     complete();
     await instance.stop();
@@ -221,7 +225,7 @@ await test("discovery notices evidence while a Host round is pending and waits f
 
 await test("discovery timeout retries the same Tab and GUID without relaunching", async (t) => {
   const native = await nativeFixture(t);
-  const bound = boundCapabilities();
+  const bound = bootstrapCapabilities(native, "same-cwd");
   let matching = false;
   native.handler = (request) =>
     request.method === "thread/loaded/list"
@@ -259,7 +263,10 @@ await test("discovery timeout retries the same Tab and GUID without relaunching"
     );
     matching = true;
     assert.equal(await instance.waitUntilReady(), "same-cwd");
-    assert.equal(new Set(bound.inputs).size, 1);
+    assert.equal(
+      new Set(bound.inputs.filter((text) => text.startsWith("!"))).size,
+      1,
+    );
     assert.equal(native.launches.length, 2);
     assert.equal(bound.recoveries, 0);
   } finally {
@@ -269,7 +276,7 @@ await test("discovery timeout retries the same Tab and GUID without relaunching"
 
 await test("discovery does not lose a notification during an in-flight enumeration", async (t) => {
   const native = await nativeFixture(t);
-  const bound = boundCapabilities();
+  const bound = bootstrapCapabilities(native, "just-loaded");
   let release!: (value: unknown) => void;
   let firstPage = true;
   native.handler = (request) => {
@@ -310,7 +317,7 @@ await test("discovery does not lose a notification during an in-flight enumerati
     await flush();
     assert.ok(native.requests.some(({ method }) => method === "thread/resume"));
     assert.equal(await waiting, "just-loaded");
-    assert.equal(bound.inputs.length, 1);
+    assert.equal(bound.inputs.length, 2);
   } finally {
     await instance.stop();
   }
@@ -318,8 +325,8 @@ await test("discovery does not lose a notification during an in-flight enumerati
 
 await test("distinct Tabs discover their own GUIDs among the same loaded threads and cwd", async (t) => {
   const native = await nativeFixture(t);
-  const first = boundCapabilities();
-  const second = boundCapabilities();
+  const first = bootstrapCapabilities(native, "first");
+  const second = bootstrapCapabilities(native, "second");
   let secondMarker = false;
   native.handler = (request) => {
     if (request.method === "thread/loaded/list")
@@ -378,8 +385,8 @@ await test("distinct Tabs discover their own GUIDs among the same loaded threads
       },
     });
     assert.equal(await br, "second");
-    assert.equal(first.inputs.length, 1);
-    assert.equal(second.inputs.length, 1);
+    assert.equal(first.inputs.length, 2);
+    assert.equal(second.inputs.length, 2);
     assert.equal(first.recoveries + second.recoveries, 0);
   } finally {
     await a.stop();

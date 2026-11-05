@@ -1,11 +1,15 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { createEnhancement } from "../../src/index.ts";
-import { boundCapabilities, flush, nativeFixture } from "../fixtures/native.ts";
+import {
+  bootstrapCapabilities,
+  flush,
+  nativeFixture,
+} from "../fixtures/native.ts";
 
 await test("observes only the supplied conversation and accepts a failed concatenated userShell marker", async (t) => {
   const native = await nativeFixture(t);
-  const bound = boundCapabilities();
+  const bound = bootstrapCapabilities(native);
   const instance = await createEnhancement(
     bound.io,
     bound.requestRecovery,
@@ -79,7 +83,7 @@ await test("observes only the supplied conversation and accepts a failed concate
 
 await test("each wait has a deadline and retries on the same instance use its GUID every two seconds", async (t) => {
   const native = await nativeFixture(t);
-  const bound = boundCapabilities();
+  const bound = bootstrapCapabilities(native);
   const instance = await createEnhancement(
     bound.io,
     bound.requestRecovery,
@@ -119,7 +123,7 @@ await test("each wait has a deadline and retries on the same instance use its GU
   assert.equal(await instance.waitUntilReady(), "known");
   t.mock.timers.tick(20_000);
   await flush();
-  assert.equal(bound.inputs.length, 4);
+  assert.equal(bound.inputs.length, 5);
   assert.equal(
     native.requests.filter(({ method }) => method === "thread/read").length,
     1,
@@ -129,7 +133,7 @@ await test("each wait has a deadline and retries on the same instance use its GU
 
 await test("readiness finishes an issued input round before returning, including after a timed-out wait", async (t) => {
   const native = await nativeFixture(t);
-  const bound = boundCapabilities();
+  const bound = bootstrapCapabilities(native);
   let complete!: () => void;
   const inputRound = new Promise<void>((resolve) => {
     complete = resolve;
@@ -174,7 +178,7 @@ await test("readiness finishes an issued input round before returning, including
 
 await test("unbound instances never adopt notification-only evidence and stop invalidates readiness repeatably", async (t) => {
   const native = await nativeFixture(t);
-  const bound = boundCapabilities();
+  const bound = bootstrapCapabilities(native);
   const instance = await createEnhancement(
     bound.io,
     bound.requestRecovery,
@@ -216,7 +220,7 @@ await test("disconnect rejects pending readiness, is redacted on stderr, and sto
     stderr.push(value);
     return true;
   });
-  const bound = boundCapabilities();
+  const bound = bootstrapCapabilities(native);
   const instance = await createEnhancement(
     bound.io,
     bound.requestRecovery,
@@ -246,7 +250,7 @@ await test("disconnect rejects pending readiness, is redacted on stderr, and sto
 
 await test("Host input errors propagate and a retry can use the same observation", async (t) => {
   const native = await nativeFixture(t);
-  const bound = boundCapabilities();
+  const bound = bootstrapCapabilities(native);
   const failure = new Error("Host failed");
   const submit = bound.io.submitText.bind(bound.io);
   bound.io.submitText = () => {
@@ -287,8 +291,8 @@ await test("two Hosts keep distinct GUIDs and exact conversation bindings", asyn
           },
         }
       : {};
-  const first = boundCapabilities();
-  const second = boundCapabilities();
+  const first = bootstrapCapabilities(native, "first");
+  const second = bootstrapCapabilities(native, "second");
   const a = await createEnhancement(
     first.io,
     first.requestRecovery,
@@ -347,7 +351,7 @@ await test("assignment replacement and bound turn start invalidate pending snaps
             })
           : {};
     });
-    const bound = boundCapabilities();
+    const bound = bootstrapCapabilities(native);
     const instance = await createEnhancement(
       bound.io,
       bound.requestRecovery,
@@ -415,7 +419,7 @@ await test("assignment replacement and bound turn start invalidate pending snaps
 
 await test("marker-like model output, other commands and unrelated turns never establish readiness", async (t) => {
   const native = await nativeFixture(t);
-  const bound = boundCapabilities();
+  const bound = bootstrapCapabilities(native);
   const instance = await createEnhancement(
     bound.io,
     bound.requestRecovery,
@@ -446,8 +450,8 @@ await test("marker-like model output, other commands and unrelated turns never e
 });
 
 await test("stop before input dispatch cancels the queued marker round", async (t) => {
-  await nativeFixture(t);
-  const bound = boundCapabilities();
+  const native = await nativeFixture(t);
+  const bound = bootstrapCapabilities(native);
   const instance = await createEnhancement(
     bound.io,
     bound.requestRecovery,
@@ -463,7 +467,7 @@ await test("stop before input dispatch cancels the queued marker round", async (
 
 await test("overlapping waits retain separate deadlines while sharing marker input rounds", async (t) => {
   const native = await nativeFixture(t);
-  const bound = boundCapabilities();
+  const bound = bootstrapCapabilities(native);
   const instance = await createEnhancement(
     bound.io,
     bound.requestRecovery,
