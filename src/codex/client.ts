@@ -17,6 +17,7 @@ export interface Notification {
 }
 
 const requestTimeout = 10_000;
+const proxyReleaseTimeout = 10_000;
 
 export class NativeClient {
   readonly notifications = new Set<(notification: Notification) => void>();
@@ -57,9 +58,24 @@ export class NativeClient {
       });
     });
     this.releases.add(async () => {
-      if (!proxy.kill() && !closed)
-        throw new Error("Codex proxy release failed");
-      await exited;
+      if (closed) return;
+      let timer!: ReturnType<typeof setTimeout>;
+      let failed!: (error: Error) => void;
+      try {
+        await new Promise<void>((resolve, reject) => {
+          failed = reject;
+          proxy.once("error", failed);
+          timer = setTimeout(
+            () => reject(new Error("Codex proxy release timed out")),
+            proxyReleaseTimeout,
+          );
+          void exited.then(resolve);
+          proxy.kill();
+        });
+      } finally {
+        clearTimeout(timer);
+        proxy.off("error", failed);
+      }
     });
     const stream = Duplex.from({
       readable: proxy.stdout,
