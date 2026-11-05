@@ -1,10 +1,11 @@
+import { randomUUID } from "node:crypto";
 import type { TerminalIO } from "issue-runner-core/terminal";
 import {
   Observation,
   threadState,
   type ThreadState,
 } from "../monitor/state.ts";
-import { NativeClient, object } from "../codex/client.ts";
+import { NativeClient, object, type Notification } from "../codex/client.ts";
 import { diagnostic } from "../diagnostics.ts";
 
 function containsMarker(
@@ -26,6 +27,14 @@ export class Readiness {
   private discoveryFailure: { cause: unknown } | undefined;
   private readonly cancellations = new Set<() => void>();
   private nextRoundAt = 0;
+  private model:
+    | {
+        prompt: string;
+        starts: Set<string>;
+        messages: Set<string>;
+        started: boolean;
+      }
+    | undefined;
 
   private readonly io: TerminalIO;
   private readonly client: NativeClient;
@@ -50,6 +59,7 @@ export class Readiness {
   wait(): Promise<string> {
     if (this.cancellations.size === 0) {
       this.discoveryFailure = undefined;
+      if (!this.model?.started) this.model = undefined;
       if (!this.round) this.nextRoundAt = 0;
     }
     return this.run();
@@ -66,6 +76,7 @@ export class Readiness {
         clearTimeout(deadline);
         clearTimeout(next);
         this.observation.changes.delete(changed);
+        this.client.notifications.delete(modelStarted);
         this.cancellations.delete(cancel);
         if (errors.length) {
           // Terminal I/O rejection values propagate unchanged across this boundary.
@@ -82,11 +93,63 @@ export class Readiness {
           void this.discover().catch(finish);
           return;
         }
+        if (this.model?.started) {
+          finish();
+          return;
+        }
         if (containsMarker(this.observation.items, this.guid)) {
           detected = true;
           clearTimeout(next);
-          if (this.observation.initialized && !this.round) finish();
+          if (this.observation.initialized && !this.round && !this.model) {
+            this.round = Promise.resolve().then(() => {
+              if (settled || this.cancellations.size === 0) return;
+              this.model = {
+                prompt: `Reply exactly READY. Do not use tools, modify files, or perform other work. Readiness token: ${randomUUID()}.`,
+                starts: new Set(),
+                messages: new Set(),
+                started: false,
+              };
+              return this.io.submitText(this.model.prompt);
+            });
+            submit();
+          }
         }
+      };
+      const modelStarted = ({ method, params }: Notification) => {
+        if (!this.model || params.threadId !== this.observation.sessionref)
+          return;
+        let turnId: unknown;
+        let items: unknown[];
+        if (method === "turn/started") {
+          const turn = object(params.turn);
+          if (typeof turn.id !== "string" || !Array.isArray(turn.items)) return;
+          turnId = turn.id;
+          items = turn.items;
+          this.model.starts.add(turn.id);
+        } else if (method === "item/started" || method === "item/completed") {
+          turnId = params.turnId;
+          items = [params.item];
+        } else return;
+        if (typeof turnId !== "string") return;
+        if (
+          items.some((value: unknown) => {
+            const item = object(value);
+            return (
+              item.type === "userMessage" &&
+              Array.isArray(item.content) &&
+              item.content.some((value: unknown) => {
+                const content = object(value);
+                return (
+                  content.type === "text" && content.text === this.model?.prompt
+                );
+              })
+            );
+          })
+        )
+          this.model.messages.add(turnId);
+        this.model.started =
+          this.model.starts.has(turnId) && this.model.messages.has(turnId);
+        changed();
       };
       const submit = () => {
         if (settled) return;
@@ -142,6 +205,7 @@ export class Readiness {
       const cancel = () => finish(new Error("Codex enhancement stopped"));
       this.cancellations.add(cancel);
       this.observation.changes.add(changed);
+      this.client.notifications.add(modelStarted);
       if (this.observation.sessionref)
         void this.observation.bind(this.observation.sessionref).catch(finish);
       changed();

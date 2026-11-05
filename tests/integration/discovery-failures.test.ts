@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { createEnhancement } from "../../src/index.ts";
 import {
-  boundCapabilities,
+  bootstrapCapabilities,
   flush,
   nativeFixture,
   thread,
@@ -18,7 +18,7 @@ await test("invalid loaded-thread pages reject readiness without guessing and al
     { data: [], nextCursor: "loop" },
   ]) {
     native.handler = () => page;
-    const bound = boundCapabilities();
+    const bound = bootstrapCapabilities(native, "retry");
     const instance = await createEnhancement(
       bound.io,
       bound.requestRecovery,
@@ -44,7 +44,10 @@ await test("invalid loaded-thread pages reject readiness without guessing and al
               ]),
             };
       assert.equal(await instance.waitUntilReady(), "retry");
-      assert.equal(new Set(bound.inputs).size, 1);
+      assert.equal(
+        new Set(bound.inputs.filter((text) => text.startsWith("!"))).size,
+        1,
+      );
     } finally {
       await instance.stop();
     }
@@ -53,7 +56,7 @@ await test("invalid loaded-thread pages reject readiness without guessing and al
 
 await test("GUID detection stops rounds while delayed binding and its current-state read finish", async (t) => {
   const native = await nativeFixture(t);
-  const bound = boundCapabilities();
+  const bound = bootstrapCapabilities(native, "found");
   let resume!: (value: unknown) => void;
   let current!: (value: unknown) => void;
   let reads = 0;
@@ -126,7 +129,7 @@ await test("GUID detection stops rounds while delayed binding and its current-st
 
 await test("a discovered conversation retries failed binding through the same readiness lifecycle", async (t) => {
   const native = await nativeFixture(t);
-  const bound = boundCapabilities();
+  const bound = bootstrapCapabilities(native, "retry-binding");
   let failBinding = true;
   native.handler = (request) => {
     if (request.method === "thread/loaded/list")
@@ -155,7 +158,10 @@ await test("a discovered conversation retries failed binding through the same re
     await instance.startMonitoring();
     await assert.rejects(instance.waitUntilReady(), /RPC request failed/);
     assert.equal(await instance.waitUntilReady(), "retry-binding");
-    assert.equal(new Set(bound.inputs).size, 1);
+    assert.equal(
+      new Set(bound.inputs.filter((text) => text.startsWith("!"))).size,
+      1,
+    );
     assert.equal(
       native.requests.filter(({ method }) => method === "thread/loaded/list")
         .length,
@@ -169,7 +175,7 @@ await test("a discovered conversation retries failed binding through the same re
 await test("matching notifications cannot hide a failed subscription or initial current-state read", async (t) => {
   const native = await nativeFixture(t);
   for (const failingMethod of ["thread/resume", "thread/read"]) {
-    const bound = boundCapabilities();
+    const bound = bootstrapCapabilities(native, "found");
     const snapshot = () => ({
       thread: thread("found", [
         {
@@ -225,7 +231,7 @@ await test("matching notifications cannot hide a failed subscription or initial 
       await assert.rejects(waiting, /RPC request failed/);
       native.handler = () => snapshot();
       assert.equal(await instance.waitUntilReady(), "found");
-      assert.equal(bound.inputs.length, 1);
+      assert.equal(bound.inputs.length, 2);
     } finally {
       await instance.stop();
     }

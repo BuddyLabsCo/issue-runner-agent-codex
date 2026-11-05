@@ -3,6 +3,7 @@ import { test } from "node:test";
 import { createEnhancement } from "../../src/index.ts";
 import {
   boundCapabilities,
+  bootstrapCapabilities,
   flush,
   nativeFixture,
   thread,
@@ -20,7 +21,7 @@ await test("a status notification during binding preserves initial history and r
           })
         : {};
   });
-  const bound = boundCapabilities();
+  const bound = bootstrapCapabilities(native);
   const instance = await createEnhancement(
     bound.io,
     bound.requestRecovery,

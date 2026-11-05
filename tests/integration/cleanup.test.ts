@@ -4,7 +4,12 @@ import WebSocket from "ws";
 import { Duplex } from "node:stream";
 import { recoveryFixture } from "../fixtures/recovery.ts";
 import { createEnhancement } from "../../src/index.ts";
-import { boundCapabilities, flush, nativeFixture } from "../fixtures/native.ts";
+import {
+  bootstrapCapabilities,
+  boundCapabilities,
+  flush,
+  nativeFixture,
+} from "../fixtures/native.ts";
 
 await test("concurrent stops share failure and retry unfinished native releases", async (t) => {
   const native = await nativeFixture(t);
@@ -303,7 +308,7 @@ await test("stop shares an in-flight reconnect release and never opens its repla
 await test("immediate stop and its cleanup retry leave another enhancement usable", async (t) => {
   const native = await nativeFixture(t);
   const first = boundCapabilities();
-  const second = boundCapabilities();
+  const second = bootstrapCapabilities(native);
   const context = { cwd: process.cwd(), env: {} };
   const stopped = await createEnhancement(
     first.io,
