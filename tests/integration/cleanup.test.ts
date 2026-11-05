@@ -183,9 +183,82 @@ await test("factory releases an allocated proxy when connection construction thr
   assert.equal(releases, 1);
 });
 
-await test("a refused proxy release fails unless its close event already confirmed exit", async (t) => {
-  for (const exited of [false, true]) {
-    await t.test(String(exited), async (t) => {
+await test("proxy release has a finite deadline and remains retryable after timeout", async (t) => {
+  for (const killResult of [false, true]) {
+    for (const lateClose of [false, true]) {
+      await t.test(`kill=${killResult}, late close=${lateClose}`, async (t) => {
+        const native = await nativeFixture(t);
+        const instance = await createEnhancement(
+          boundCapabilities().io,
+          boundCapabilities().requestRecovery,
+          { cwd: process.cwd(), env: {} },
+          {},
+        );
+        const proxy = native.proxies[0]!;
+        const errors = proxy.listeners("error");
+        const closes = proxy.listeners("close");
+        const emit = proxy.emit.bind(proxy);
+        const events = t.mock.method(
+          proxy,
+          "emit",
+          (event: string, ...args: unknown[]) =>
+            event === "close" ? true : emit(event, ...args),
+        );
+        t.mock.timers.enable({ apis: ["setTimeout"] });
+        const scheduled = t.mock.method(globalThis, "setTimeout");
+        const cleared = t.mock.method(globalThis, "clearTimeout");
+        const terminate = t.mock.method(WebSocket.prototype, "terminate");
+        const kill = t.mock.method(proxy, "kill");
+        kill.mock.mockImplementationOnce(() => {
+          assert.equal(proxy.listenerCount("error"), errors.length + 1);
+          assert.equal(scheduled.mock.callCount(), 1);
+          return killResult;
+        });
+        let finished = false;
+        const stopped = instance.stop();
+        assert.equal(stopped, instance.stop());
+        const failure = assert
+          .rejects(stopped, /proxy release timed out/)
+          .then(() => {
+            finished = true;
+          });
+        t.mock.timers.tick(9_999);
+        await flush();
+        assert.equal(finished, false);
+        assert.equal(kill.mock.callCount(), 1);
+        t.mock.timers.tick(1);
+        await failure;
+        assert.deepEqual(proxy.listeners("error"), errors);
+        assert.deepEqual(proxy.listeners("close"), closes);
+        assert.ok(
+          cleared.mock.calls.some(
+            ({ arguments: [timer] }) =>
+              timer === scheduled.mock.calls[0]!.result,
+          ),
+        );
+        if (lateClose) emit("close", 0);
+        events.mock.restore();
+        await instance.stop();
+        await instance.stop();
+        assert.equal(kill.mock.callCount(), lateClose ? 1 : 2);
+        assert.equal(terminate.mock.callCount(), 1);
+        assert.deepEqual(proxy.listeners("error"), errors);
+        t.mock.timers.tick(100_000);
+        await flush();
+      });
+    }
+  }
+});
+
+await test("kill exceptions and child errors reject release and leave a later close retryable", async (t) => {
+  for (const mode of [
+    "throw",
+    "error",
+    "deferred error",
+    "close then throw",
+    "close then error",
+  ]) {
+    await t.test(mode, async (t) => {
       const native = await nativeFixture(t);
       const instance = await createEnhancement(
         boundCapabilities().io,
@@ -194,13 +267,46 @@ await test("a refused proxy release fails unless its close event already confirm
         {},
       );
       const proxy = native.proxies[0]!;
+      const emit = proxy.emit.bind(proxy);
+      const errors = proxy.listeners("error");
+      t.mock.method(proxy, "emit", (event: string, ...args: unknown[]) =>
+        event === "close" ? true : emit(event, ...args),
+      );
+      t.mock.timers.enable({ apis: ["setTimeout"] });
+      const scheduled = t.mock.method(globalThis, "setTimeout");
+      const cleared = t.mock.method(globalThis, "clearTimeout");
+      const terminate = t.mock.method(WebSocket.prototype, "terminate");
+      const failure = new Error("proxy release error");
       const kill = t.mock.method(proxy, "kill");
-      kill.mock.mockImplementationOnce(() => false);
-      if (exited) proxy.emit("close", 0);
-      if (exited) await instance.stop();
-      else await assert.rejects(instance.stop(), /proxy release failed/);
+      kill.mock.mockImplementationOnce(() => {
+        if (mode.startsWith("close")) emit("close", 0);
+        if (mode.endsWith("throw")) throw failure;
+        if (mode === "deferred error") return false;
+        emit("error", failure);
+        return false;
+      });
+      const stopped = assert.rejects(
+        instance.stop(),
+        (error) => error === failure,
+      );
+      if (mode === "deferred error") {
+        await flush();
+        emit("error", failure);
+      }
+      await stopped;
+      assert.deepEqual(proxy.listeners("error"), errors);
+      assert.ok(
+        cleared.mock.calls.some(
+          ({ arguments: [timer] }) => timer === scheduled.mock.calls[0]!.result,
+        ),
+      );
+      emit("close", 0);
       await instance.stop();
-      assert.equal(kill.mock.callCount(), exited ? 1 : 2);
+      await instance.stop();
+      assert.equal(kill.mock.callCount(), 1);
+      assert.equal(terminate.mock.callCount(), 1);
+      t.mock.timers.tick(100_000);
+      await flush();
     });
   }
 });

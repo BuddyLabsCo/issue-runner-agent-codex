@@ -125,6 +125,76 @@ await test("repeatable stop waits for its owned proxy to close", async (t) => {
   await Promise.all([stopped, instance.stop()]);
 });
 
+await test("stop waits for deferred close when proxy kill returns false", async (t) => {
+  const native = await nativeFixture(t);
+  const bound = boundCapabilities();
+  const instance = await createEnhancement(
+    bound.io,
+    bound.requestRecovery,
+    { cwd: process.cwd(), env: {} },
+    {},
+  );
+  const proxy = native.proxies[0]!;
+  const emit = proxy.emit.bind(proxy);
+  const errors = proxy.listeners("error");
+  const observer = proxy.listeners("close")[1];
+  t.mock.method(proxy, "emit", (event: string, ...args: unknown[]) =>
+    event === "close" ? true : emit(event, ...args),
+  );
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const ready = assert.rejects(instance.waitUntilReady(), /stopped/);
+  await flush();
+  const scheduled = t.mock.method(globalThis, "setTimeout");
+  const cleared = t.mock.method(globalThis, "clearTimeout");
+  const kill = t.mock.method(proxy, "kill", () => false);
+  let finished = false;
+  const stopped = instance.stop();
+  assert.equal(stopped, instance.stop());
+  const outcome = stopped.then(
+    () => {
+      finished = true;
+    },
+    (error: unknown) => {
+      finished = true;
+      return error;
+    },
+  );
+  await flush();
+  await ready;
+  assert.equal(finished, false);
+  emit("close", 0);
+  assert.equal(await outcome, undefined);
+  await instance.stop();
+  assert.equal(kill.mock.callCount(), 1);
+  assert.deepEqual(proxy.listeners("error"), errors);
+  assert.deepEqual(proxy.listeners("close"), [observer]);
+  assert.ok(
+    cleared.mock.calls.some(
+      ({ arguments: [timer] }) => timer === scheduled.mock.calls[0]!.result,
+    ),
+  );
+  t.mock.timers.tick(100_000);
+  await flush();
+  assert.equal(bound.inputs.length, 1);
+  assert.equal(bound.recoveries, 0);
+});
+
+await test("an already-closed proxy needs no kill on repeated stop", async (t) => {
+  const native = await nativeFixture(t);
+  const instance = await createEnhancement(
+    boundCapabilities().io,
+    boundCapabilities().requestRecovery,
+    { cwd: process.cwd(), env: {} },
+    {},
+  );
+  const proxy = native.proxies[0]!;
+  const kill = t.mock.method(proxy, "kill");
+  proxy.emit("close", 0);
+  await instance.stop();
+  await instance.stop();
+  assert.equal(kill.mock.callCount(), 0);
+});
+
 await test("large finite readiness deadlines do not overflow native timers", async (t) => {
   await nativeFixture(t);
   const instance = await createEnhancement(
