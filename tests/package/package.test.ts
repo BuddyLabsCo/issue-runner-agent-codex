@@ -1,7 +1,15 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  rm,
+  stat,
+  writeFile,
+} from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { promisify } from "node:util";
 import { test } from "node:test";
@@ -27,22 +35,13 @@ await test("imports the packed runtime without Core, then checks declarations ag
       cwd,
       env,
     });
-  const packed = await runNpm(
-    ["pack", "--json", "--pack-destination", scratch],
-    root,
+  const artifacts = join(scratch, "artifacts");
+  await mkdir(artifacts);
+  await runNpm(["pack", "--pack-destination", artifacts], root);
+  const archives = (await readdir(artifacts)).filter((name) =>
+    name.endsWith(".tgz"),
   );
-  const metadata = JSON.parse(packed.stdout) as {
-    filename: string;
-    files: { path: string }[];
-  }[];
-  const artifact = metadata[0]!;
-  assert.ok(artifact.files.some(({ path }) => path === "dist/index.js"));
-  assert.ok(artifact.files.some(({ path }) => path === "dist/index.d.ts"));
-  assert.ok(
-    artifact.files.every(
-      ({ path }) => !path.startsWith("tests/") && !path.startsWith("src/"),
-    ),
-  );
+  assert.equal(archives.length, 1, "Expected exactly one packed archive");
   await writeFile(
     join(scratch, "package.json"),
     JSON.stringify({
@@ -58,10 +57,19 @@ await test("imports the packed runtime without Core, then checks declarations ag
       "--ignore-scripts",
       "--no-audit",
       "--no-fund",
-      join(scratch, artifact.filename),
+      join(artifacts, archives[0]!),
     ],
     scratch,
   );
+  const installedPackage = join(
+    scratch,
+    "node_modules/issue-runner-agent-codex",
+  );
+  assert.ok((await stat(join(installedPackage, "dist/index.js"))).isFile());
+  assert.ok((await stat(join(installedPackage, "dist/index.d.ts"))).isFile());
+  const installedFiles = await readdir(installedPackage);
+  assert.ok(!installedFiles.includes("src"));
+  assert.ok(!installedFiles.includes("tests"));
   const installed = JSON.parse(
     await readFile(join(scratch, "package-lock.json"), "utf8"),
   ) as { packages: Record<string, unknown> };
@@ -70,10 +78,7 @@ await test("imports the packed runtime without Core, then checks declarations ag
   );
   assert.equal(installed.packages["node_modules/issue-runner-core"], undefined);
   const manifest = JSON.parse(
-    await readFile(
-      join(scratch, "node_modules/issue-runner-agent-codex/package.json"),
-      "utf8",
-    ),
+    await readFile(join(installedPackage, "package.json"), "utf8"),
   ) as {
     dependencies?: Record<string, string>;
     peerDependencies?: unknown;
