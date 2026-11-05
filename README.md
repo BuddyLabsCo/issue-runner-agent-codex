@@ -4,7 +4,7 @@ Optional observation, readiness, and bounded recovery for an exact Codex convers
 
 ## Install a development candidate
 
-Use Node.js 22.18.0 and npm 11. Install Git and native Codex separately; make `git` and `codex` available on the supplied environment's executable search path. This candidate targets Codex CLI/app-server **0.166.0**. Its version, CLI help, generated protocol, and shared-daemon initialization were checked locally. A [native readiness probe](docs/readiness-verification.md) verified interrupted bootstrap and settings persistence on resume. Full joint integration, other native versions, and Windows execution have not been checked; the lifecycle tests use scripted native responses.
+Use Node.js 22.18.0 and npm 11. Install Git and native Codex separately; make `git` and `codex` available on the supplied environment's executable search path. This candidate targets Codex CLI/app-server **0.166.0**. Its version, CLI help, generated protocol, and shared-daemon initialization were checked locally. A [native readiness probe](docs/readiness-verification.md) verified model and effort persistence after interrupted bootstrap, daemon restart, and resume without reapplying either setting. Full joint integration, other native versions, and Windows execution have not been checked; the lifecycle tests use scripted native responses.
 
 Build and pack from this checkout:
 
