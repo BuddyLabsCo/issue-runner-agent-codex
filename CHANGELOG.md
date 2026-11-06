@@ -1,0 +1,23 @@
+# Changelog
+
+## 0.1.0
+
+- - feat: [issue-36] automate stable Codex enhancement releases (#40)
+- - chore: [issue-35] consume registry Core 0.1.0 (#39)
+- - fix: [issue-32] await confirmed Codex proxy closure (#33)
+- - fix: [issue-28] verify packed artifacts without parsing npm output (#31)
+- - fix: [issue-29] start a model turn before completing readiness (#30)
+- - fix: [issue-26] keep readiness discovery alive after history read failures (#27)
+- - feat: [issue-22] adopt Assignment-aware Codex recovery (#25)
+- - fix: [issue-23] make cleanup retryable and preserve operational errors (#24)
+- - feat: [issue-8] reconnect Codex observation and refresh current state (#15)
+- - feat: [issue-7] recover missing handoffs and respect human action (#14)
+- - feat: [issue-6] recover final turn errors with bounded retries (#13)
+- - feat: [issue-5] discover Codex conversations by per-Tab GUID (#12)
+- - feat: [issue-4] trust current hooks during startup preflight (#11)
+- - feat: [issue-3] trust the primary checkout before Codex startup (#10)
+- - feat: [issue-2] implement known-session Codex readiness (#9)
+- - upload contract
+- - chore: define Codex enhancement module responsibilities
+- - chore: preserve LF line endings across checkouts
+- - chore: scaffold Codex enhancement architecture and quality checks
