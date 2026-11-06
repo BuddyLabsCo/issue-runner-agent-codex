@@ -1,0 +1,74 @@
+# Publishes the npm tarball of the release pull request a human merged into main.
+# scripts/release/publish-release.ts rejects every input that is not a squash or
+# rebase merge of this repository's auto-release branch before it writes to the
+# registry, a tag or a Release. Publication also stays disabled until the
+# manifest, build, and release:accept check accept the exact packed tarball.
+name: publish-release
+
+on:
+  pull_request:
+    types:
+      - closed
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-release
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Publish the merged release
+    if: ${{ github.event.pull_request.merged == true && github.event.pull_request.head.ref == 'auto-release' && github.repository == 'BuddyLabsCo/issue-runner-agent-codex' && github.event.pull_request.head.repo.full_name == github.repository }}
+    permissions:
+      contents: write
+      pull-requests: read
+      id-token: write
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the merged release commit
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.merge_commit_sha }}
+          fetch-depth: 0
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22.18.0
+          package-manager-cache: false
+      - name: Set up npm for Trusted Publishing
+        run: npm install --global npm@11.19.0
+      - name: Install dependencies
+        run: npm ci
+      - name: Build the package
+        run: npm run build --if-present
+      - name: Pack the candidate tarball
+        id: pack
+        run: npm run release:pack
+      - name: Verify and publish the merged release
+        id: release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_MERGED: ${{ github.event.pull_request.merged }}
+          PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          PR_BASE_REF: ${{ github.event.pull_request.base.ref }}
+          PR_HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
+          MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha }}
+          TARBALL: ${{ steps.pack.outputs.tarball }}
+        run: npm run release:publish
+
+      - name: Retain the verified candidate and bootstrap identity
+        if: ${{ always() && steps.release.outputs.verified_tarball != '' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: verified-codex-release
+          path: |
+            ${{ steps.release.outputs.verified_tarball }}
+            ${{ steps.release.outputs.verified_tarball }}.json
+          if-no-files-found: error
+          retention-days: 90

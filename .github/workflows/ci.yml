@@ -9,7 +9,34 @@ permissions:
   contents: read
 
 jobs:
+  release-merge:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+    outputs:
+      skip: ${{ steps.release.outputs.result }}
+    steps:
+      - uses: actions/github-script@v9
+        id: release
+        with:
+          script: |
+            const pulls = await github.paginate(
+              github.rest.repos.listPullRequestsAssociatedWithCommit,
+              { ...context.repo, commit_sha: context.sha },
+            );
+            return pulls.some(pr =>
+              pr.merged_at &&
+              pr.merge_commit_sha === context.sha &&
+              pr.base.ref === 'main' &&
+              pr.base.repo?.full_name === `${context.repo.owner}/${context.repo.repo}` &&
+              pr.head.ref === 'auto-release' &&
+              pr.head.repo?.full_name === `${context.repo.owner}/${context.repo.repo}`
+            );
+
   checks:
+    needs: release-merge
+    if: ${{ !cancelled() && (github.event_name == 'pull_request' || needs.release-merge.outputs.skip == 'false') }}
     strategy:
       fail-fast: false
       matrix:

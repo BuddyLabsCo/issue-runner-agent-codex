@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { execFile } from "node:child_process";
 import {
   mkdir,
@@ -34,13 +35,40 @@ await test("imports the packed runtime without Core, then checks declarations ag
       cwd,
       env,
     });
+  const sourceManifest = JSON.parse(
+    await readFile(join(root, "package.json"), "utf8"),
+  ) as { version: string; keywords?: string[] };
+  const keywords = [
+    "issue-runner",
+    "codex",
+    "openai-codex",
+    "agent-enhancement",
+    "ai-agent",
+    "coding-agent",
+    "github-issues",
+    "workflow-automation",
+  ];
+  for (const keyword of keywords)
+    assert.ok(
+      sourceManifest.keywords?.includes(keyword),
+      `Missing source keyword: ${keyword}`,
+    );
   const artifacts = join(scratch, "artifacts");
-  await mkdir(artifacts);
-  await runNpm(["pack", "--pack-destination", artifacts], root);
-  const archives = (await readdir(artifacts)).filter((name) =>
-    name.endsWith(".tgz"),
-  );
-  assert.equal(archives.length, 1, "Expected exactly one packed archive");
+  let tarball = process.env.RELEASE_TARBALL;
+  if (tarball) {
+    tarball = resolve(tarball);
+  } else {
+    await mkdir(artifacts);
+    await runNpm(["pack", "--pack-destination", artifacts], root);
+    const archives = (await readdir(artifacts)).filter((name) =>
+      name.endsWith(".tgz"),
+    );
+    assert.equal(archives.length, 1, "Expected exactly one packed archive");
+    tarball = join(artifacts, archives[0]!);
+  }
+  const candidateIntegrity = createHash("sha512")
+    .update(await readFile(tarball))
+    .digest("hex");
   await writeFile(
     join(scratch, "package.json"),
     JSON.stringify({
@@ -56,7 +84,7 @@ await test("imports the packed runtime without Core, then checks declarations ag
       "--ignore-scripts",
       "--no-audit",
       "--no-fund",
-      join(artifacts, archives[0]!),
+      tarball,
     ],
     scratch,
   );
@@ -80,6 +108,9 @@ await test("imports the packed runtime without Core, then checks declarations ag
     await readFile(join(installedPackage, "package.json"), "utf8"),
   ) as {
     version: string;
+    keywords?: string[];
+    repository?: { type: string; url: string };
+    exports?: unknown;
     devDependencies: Record<string, string>;
     dependencies?: Record<string, string>;
     optionalDependencies?: unknown;
@@ -89,7 +120,19 @@ await test("imports the packed runtime without Core, then checks declarations ag
     peerDependencies?: unknown;
     peerDependenciesMeta?: unknown;
   };
-  assert.equal(manifest.version, "0.1.0");
+  assert.equal(manifest.version, sourceManifest.version);
+  for (const keyword of keywords)
+    assert.ok(
+      manifest.keywords?.includes(keyword),
+      `Missing packed keyword: ${keyword}`,
+    );
+  assert.deepEqual(manifest.repository, {
+    type: "git",
+    url: "git+https://github.com/BuddyLabsCo/issue-runner-agent-codex.git",
+  });
+  assert.deepEqual(manifest.exports, {
+    ".": { types: "./dist/index.d.ts", default: "./dist/index.js" },
+  });
   assert.equal(manifest.devDependencies["issue-runner-core"], "0.1.0");
   assert.equal(manifest.dependencies?.["issue-runner-core"], undefined);
   assert.equal(manifest.optionalDependencies, undefined);
@@ -183,8 +226,8 @@ await test("imports the packed runtime without Core, then checks declarations ag
       }
     >;
   };
-  assert.equal(lock.version, "0.1.0");
-  assert.equal(lock.packages[""]?.version, "0.1.0");
+  assert.equal(lock.version, sourceManifest.version);
+  assert.equal(lock.packages[""]?.version, sourceManifest.version);
   assert.equal(
     lock.packages[""]?.devDependencies?.["issue-runner-core"],
     "0.1.0",
@@ -210,4 +253,11 @@ await test("imports the packed runtime without Core, then checks declarations ag
   assert.equal(installedCore.resolved, core.resolved);
   assert.equal(installedCore.integrity, core.integrity);
   assert.equal(installedCore.dev, true);
+  assert.equal(
+    createHash("sha512")
+      .update(await readFile(tarball))
+      .digest("hex"),
+    candidateIntegrity,
+    "Package verification must preserve the candidate bytes",
+  );
 });

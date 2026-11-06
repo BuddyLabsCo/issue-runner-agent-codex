@@ -16,7 +16,10 @@
     "typecheck": "tsc --noEmit",
     "test": "node --test \"tests/**/*.test.*\"",
     "build": "tsc -p tsconfig.build.json",
-    "prepack": "npm run build"
+    "prepack": "npm run build",
+    "release:accept": "node --test tests/package/package.test.ts",
+    "release:pack": "node scripts/release/pack-candidate.ts",
+    "release:publish": "node scripts/release/publish-release.ts"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
@@ -40,5 +43,19 @@
   "files": [
     "dist",
     "README.md"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/BuddyLabsCo/issue-runner-agent-codex.git"
+  },
+  "keywords": [
+    "issue-runner",
+    "codex",
+    "openai-codex",
+    "agent-enhancement",
+    "ai-agent",
+    "coding-agent",
+    "github-issues",
+    "workflow-automation"
   ]
 }

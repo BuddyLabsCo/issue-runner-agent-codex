@@ -12,9 +12,11 @@
 |   |-- recovery/              # Error/handoff recovery, budgets, waits and cancellation
 |   |-- codex/                 # Native Codex configuration, RPC and portable I/O
 |   `-- diagnostics.ts         # Terminal errors and recovery-request output
+|-- scripts/release/           # Independent stable Release PRs and exact-candidate publication
 |-- tests/
 |   |-- unit/                  # Configuration, marker matching, recovery rules and static quality checks
 |   |-- integration/           # Enhancement lifecycle through injected capabilities and native protocol substitutes
+|   |-- release/               # Real Git fixtures and portable GitHub/npm substitutes
 |   |-- package/               # Built exports, optional installation and Core contract compatibility
 |   `-- fixtures/             # Scripted capabilities, clock and Codex responses; no terminal-plugin dependency
 |-- docs/                      # Architecture, decisions and usage
@@ -37,3 +39,4 @@ index.ts -> enhancement.ts -> preflight/ | session/ | monitor/ | recovery/
 - **OS-bound code is prohibited throughout this repository, including adapters, tests and fixtures.** No platform branches, OS-specific commands, fixed native paths/socket conventions, shell-dependent execution, PTY handling or native key codes. Use portable Node APIs and the injected capabilities; there is no platform-specific adapter exception.
 - Keep helpers beside their owner. The tree defines the target layout; add modules when needed, not as empty scaffolding.
 - Run `npm run check` for formatting, lint and types; `npm test` verifies the quality rules.
+- `scripts/release/` owns proposal eligibility, release identity, candidate packing and publication recovery. It does not import runtime enhancement modules. Release tests substitute external GitHub/npm boundaries without platform exceptions.
