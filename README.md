@@ -15,19 +15,9 @@ npm --allow-scripts= test
 npm --allow-scripts= pack --json
 ```
 
-Install the resulting `issue-runner-agent-codex-0.0.0-dev.1.tgz` into your consumer. The tarball contains JavaScript and declarations and requires no terminal-plugin dependency. Core is a development dependency used through type-only imports. The published package has no Core runtime dependency or peer dependency.
+Install the resulting `issue-runner-agent-codex-0.1.0.tgz` into your consumer. The tarball contains JavaScript and declarations and requires no terminal-plugin dependency. Core is a development dependency used through type-only imports. The published package has no Core runtime dependency or peer dependency.
 
-The development dependency remains `file:issue-runner-core-contract.1.tgz`. This complete Core package was built from a clean, isolated checkout of remote main at [commit `1bd2c4406978b168e3726c996fe7fbdae9ced8b4`](https://github.com/BuddyLabsCo/issue-runner-core/commit/1bd2c4406978b168e3726c996fe7fbdae9ced8b4). The filename is a storage convention, not the enhancement contract version.
-
-| Artifact field | Value |
-| --- | --- |
-| Package version | `0.0.0-contract.1` |
-| Enhancement contract | `2` |
-| SHA-256 | `e11ddcc6900158b3f4ab3f91acc461dbd2c7f99ceb295c50c46ddced9310a65a` |
-| npm pack SHA-1 | `3ea5ff3a688b919776689b7af38526da7f29dc4d` |
-| Build toolchain | Node.js `24.20.0`, npm `11.19.0`, TypeScript `5.9.3` |
-
-Core's documented workflow used `npm ci --ignore-scripts`, typechecking, its test suite, and `npm pack --json --pack-destination artifacts`. Packing ran Core's `prepack` build without changing its source or archive metadata. `package-lock.json` records the replacement archive's version and SHA-512 integrity. Local installation used a fresh cache and refreshed the installed declarations. This verifies the development artifact, not native Core/terminal integration or registry availability.
+Development and CI install exact npm `issue-runner-core@0.1.0` through `npm ci`. No local Core archive or sibling checkout is required. The enhancement package and native initialization client both use version `0.1.0`; the enhancement contract remains `2`.
 
 ## Host the lifecycle
 
@@ -149,7 +139,7 @@ The native boundary invokes `codex app-server daemon start` and `codex app-serve
 
 Protocol references are the [0.166.0 proxy dispatch](https://github.com/openai/codex/blob/rust-v0.166.0/codex-rs/cli/src/main.rs), [native WebSocket transport](https://github.com/openai/codex/blob/rust-v0.166.0/codex-rs/app-server-transport/src/transport/unix_socket.rs), [native project-warning format](https://github.com/openai/codex/blob/rust-v0.166.0/codex-rs/app-server/src/lib.rs), [native hook trust writes](https://github.com/openai/codex/blob/rust-v0.166.0/codex-rs/tui/src/hooks_rpc.rs), and [App Server configuration APIs](https://learn.chatgpt.com/docs/app-server). Trust request and response shapes were checked against the locally generated 0.166.0 protocol schema. The initial snapshot uses the supported full-history `thread/read` response; that native API is deprecated for paginated threads and may require migration in a later native-version update.
 
-Tests exercise the public factory through separate bound terminal I/O and recovery callbacks, controlled time, and a scripted native byte bridge. Trust tests verify factory ordering, structured writes, current hook hashes, managed and disabled definitions, policy and warning rejection, mismatched readback, repeated creation and partial cleanup. Git discovery also runs against temporary ordinary and linked checkouts. The package test first installs and imports the runtime without Core. It then installs the development Core artifact to compile a declaration consumer and verify contract versions, export names, and archive integrity. A runtime resolver guard prevents ancestor development dependencies from hiding an accidental Core import. Installation prefers cached dependencies and fetches missing registry data when needed. CI already targets Ubuntu and Windows; implementation and fixtures use portable Node APIs.
+Tests exercise the public factory through separate bound terminal I/O and recovery callbacks, controlled time, and a scripted native byte bridge. Trust tests verify factory ordering, structured writes, current hook hashes, managed and disabled definitions, policy and warning rejection, mismatched readback, repeated creation and partial cleanup. Git discovery also runs against temporary ordinary and linked checkouts. The package test first installs and imports the runtime without Core. It then explicitly installs exact npm `issue-runner-core@0.1.0` as a development dependency to compile a declaration consumer and verify contract versions, export names, registry resolution, and lockfile integrity. A runtime resolver guard prevents ancestor development dependencies from hiding an accidental Core import. Installation prefers cached dependencies and fetches missing registry data when needed. CI already targets Ubuntu and Windows; implementation and fixtures use portable Node APIs.
 
 Discovery tests cover multiple loaded threads and pages, same-cwd Tabs, nonmatching evidence, delayed loading, failed multiline commands, pending terminal input, timeout/retry, notification races, invalid pages, and stop during discovery. Loaded-thread request and response shapes were checked against the locally generated Codex 0.166.0 protocol schema. Joint integration acceptance and registry publication remain outside this ticket.
 

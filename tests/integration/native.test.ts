@@ -6,6 +6,22 @@ import { test } from "node:test";
 import { createEnhancement } from "../../src/index.ts";
 import { boundCapabilities, flush, nativeFixture } from "../fixtures/native.ts";
 
+await test("native initialization advertises the 0.1.0 release", async (t) => {
+  const native = await nativeFixture(t);
+  const bound = boundCapabilities();
+  const instance = await createEnhancement(
+    bound.io,
+    bound.requestRecovery,
+    { cwd: process.cwd(), env: {} },
+    {},
+  );
+  await instance.stop();
+  assert.deepEqual(native.requests[0]?.params.clientInfo, {
+    name: "issue-runner-agent-codex",
+    version: "0.1.0",
+  });
+});
+
 await test("awaited factory initialization failure releases its partial connection without native shutdown", async (t) => {
   const native = await nativeFixture(t);
   native.handler = () => {

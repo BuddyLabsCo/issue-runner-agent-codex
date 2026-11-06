@@ -1,6 +1,6 @@
 {
   "name": "issue-runner-agent-codex",
-  "version": "0.0.0-dev.1",
+  "version": "0.1.0",
   "description": "Terminal-independent Codex enhancement for Issue Runner",
   "type": "module",
   "engines": {
@@ -23,7 +23,7 @@
     "@types/node": "22.18.0",
     "@types/ws": "8.18.2",
     "eslint": "10.10.0",
-    "issue-runner-core": "file:issue-runner-core-contract.1.tgz",
+    "issue-runner-core": "0.1.0",
     "prettier": "3.9.6",
     "typescript": "6.0.3",
     "typescript-eslint": "8.70.0"
