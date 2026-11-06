@@ -2,7 +2,12 @@ import assert from "node:assert/strict";
 import { dirname, join, resolve } from "node:path";
 import { test } from "node:test";
 import { createEnhancement } from "../../src/index.ts";
-import { boundCapabilities, flush, nativeFixture } from "../fixtures/native.ts";
+import {
+  boundCapabilities,
+  flush,
+  hook,
+  nativeFixture,
+} from "../fixtures/native.ts";
 
 await test(
   "factory trusts the primary checkout and awaits effective readback before terminal startup",
@@ -85,70 +90,67 @@ await test(
   },
 );
 
-await test("factory rejects a managed override even when readback reports trusted and closes only its proxy", async (t) => {
-  const native = await nativeFixture(t);
-  native.configuration.projects = {};
-  const handleConfig = native.configHandler;
-  native.configHandler = (request) => {
-    const result = handleConfig(request);
-    if (request.method === "config/value/write")
-      return {
-        status: "okOverridden",
-        version: "written",
-        filePath: join(native.primary, "config.toml"),
-        overriddenMetadata: {
-          effectiveValue: { [native.primary]: { trust_level: "untrusted" } },
-          message: "private policy detail",
-          overridingLayer: {
-            name: { type: "enterpriseManaged", id: "managed", name: "Policy" },
-            version: "policy",
-          },
-        },
-      };
-    return result;
-  };
-  await assert.rejects(
-    createEnhancement(
+for (const status of ["ok", "okOverridden"]) {
+  await test(`factory accepts project trust write ${status} with override metadata when readback proves trust`, async (t) => {
+    const native = await nativeFixture(t);
+    native.configuration.projects = {};
+    const handleConfig = native.configHandler;
+    native.configHandler = (request) => {
+      const result = handleConfig(request);
+      if (request.method === "config/value/write")
+        return {
+          status,
+          overriddenMetadata: { message: "private policy detail" },
+        };
+      return result;
+    };
+    const instance = await createEnhancement(
       boundCapabilities().io,
       boundCapabilities().requestRecovery,
       { cwd: process.cwd(), env: {} },
       {},
-    ),
-    /trust.*overridden/,
-  );
-  await flush();
-  assert.equal(native.sockets[0]?.readyState, 3);
-  assert.deepEqual(
-    native.launches.map(({ args }) => args),
-    [
-      ["app-server", "daemon", "start"],
-      ["app-server", "proxy"],
-    ],
-  );
-});
+    );
+    assert.deepEqual(native.configuration.projects, {
+      [native.primary]: { trust_level: "trusted" },
+    });
+    assert.equal(
+      native.requests.filter(({ method }) => method === "config/read").length,
+      2,
+    );
+    await instance.stop();
+  });
+}
 
-await test("factory retains initialization configuration warnings and rejects even an already-trusted checkout", async (t) => {
+await test("factory accepts an already-trusted checkout with the reported unrelated initialization warning", async (t) => {
   const native = await nativeFixture(t);
+  native.hooks.push({
+    ...hook("startup"),
+    enabled: false,
+    trustStatus: "trusted",
+  });
   native.handler = (request) => {
     if (request.method === "initialize")
-      native.notify("configWarning", { summary: "private warning detail" });
+      native.notify("configWarning", {
+        summary: "Ignored 7 configuration settings",
+        details: "disable_response_storage, mcp_servers.fixture.type",
+      });
     return {};
   };
-  await assert.rejects(
-    createEnhancement(
-      boundCapabilities().io,
-      boundCapabilities().requestRecovery,
-      { cwd: process.cwd(), env: {} },
-      {},
-    ),
-    /configuration warnings/,
+  const before = structuredClone(native.configuration);
+  const bound = boundCapabilities();
+  const instance = await createEnhancement(
+    bound.io,
+    bound.requestRecovery,
+    { cwd: process.cwd(), env: {} },
+    {},
   );
-  await flush();
-  assert.equal(native.sockets[0]?.readyState, 3);
+  assert.deepEqual(native.configuration, before);
   assert.equal(
-    native.requests.some(({ method }) => method === "config/value/write"),
-    false,
+    native.requests.filter(({ method }) => method === "hooks/list").length,
+    2,
   );
+  assert.deepEqual(bound.inputs, []);
+  await instance.stop();
 });
 
 await test("factory rejects relative primary metadata instead of resolving it against the Runner checkout", async (t) => {
@@ -237,8 +239,9 @@ for (const failure of [
   "readback",
   "ineffective",
   "malformed-readback",
-  "warning-write",
-  "warning-readback",
+  "malformed-write",
+  "invalid-status",
+  "overridden-ineffective",
 ] as const) {
   await test(`factory rejects ${failure} and releases its partial resources while preserving another observer`, async (t) => {
     const native = await nativeFixture(t);
@@ -261,14 +264,15 @@ for (const failure of [
           throw new Error("private read error");
         if (failure === "malformed-readback" && reads === 2)
           return { config: null };
-        if (failure === "warning-readback" && reads === 2)
-          native.notify("configWarning", {
-            summary: "private readback warning",
-          });
       } else {
         if (failure === "write") throw new Error("private write error");
-        if (failure === "warning-write")
-          native.notify("configWarning", { summary: "private write warning" });
+        if (failure === "malformed-write") return {};
+        if (failure === "invalid-status") return { status: "invalid" };
+        if (failure === "overridden-ineffective")
+          return {
+            status: "okOverridden",
+            overriddenMetadata: { message: "private policy detail" },
+          };
         if (failure === "ineffective")
           return {
             status: "ok",
@@ -286,7 +290,20 @@ for (const failure of [
         { cwd: process.cwd(), env: {} },
         {},
       ),
-      /Codex/,
+      (error: Error) => {
+        const operation = [
+          "write",
+          "malformed-write",
+          "invalid-status",
+        ].includes(failure)
+          ? /config\/value\/write.*projects/
+          : failure.includes("ineffective")
+            ? /primary checkout trust was not established/
+            : /config\/read/;
+        assert.match(error.message, operation);
+        assert.doesNotMatch(error.message, /private|secret/);
+        return true;
+      },
     );
     await flush();
     assert.equal(native.sockets[1]?.readyState, 3);

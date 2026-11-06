@@ -2,7 +2,12 @@ import assert from "node:assert/strict";
 import { join, resolve } from "node:path";
 import { test } from "node:test";
 import { createEnhancement } from "../../src/index.ts";
-import { boundCapabilities, flush, nativeFixture } from "../fixtures/native.ts";
+import {
+  boundCapabilities,
+  flush,
+  hook,
+  nativeFixture,
+} from "../fixtures/native.ts";
 
 function projectLayer(root: string, disabledReason: string | null = null) {
   return {
@@ -46,7 +51,7 @@ await test("factory establishes trust when native configuration returns null pro
   await instance.stop();
 });
 
-await test("factory recovers an initial trust warning when writing trust enables the project layer", async (t) => {
+await test("factory establishes effective trust despite an initial trust warning", async (t) => {
   const native = await nativeFixture(t);
   native.configuration.projects = null;
   native.handler = (request) => {
@@ -101,7 +106,7 @@ await test("factory recovers an initial trust warning when writing trust enables
 });
 
 for (const withTrustWarning of [false, true]) {
-  await test(`factory consistently rejects an unrelated initialization warning across a trust write${withTrustWarning ? " alongside a resolved trust warning" : ""}`, async (t) => {
+  await test(`factory accepts an unrelated initialization warning across a trust write${withTrustWarning ? " alongside a resolved trust warning" : ""}`, async (t) => {
     const native = await nativeFixture(t);
     native.configuration.projects = null;
     native.configuration.unknown_setting = "preserved";
@@ -134,17 +139,13 @@ for (const withTrustWarning of [false, true]) {
       return handleConfig(request);
     };
     for (let attempt = 0; attempt < 2; attempt++) {
-      await assert.rejects(
-        createEnhancement(
-          boundCapabilities().io,
-          boundCapabilities().requestRecovery,
-          { cwd: native.primary, env: {} },
-          {},
-        ),
-        /configuration warnings/,
+      const instance = await createEnhancement(
+        boundCapabilities().io,
+        boundCapabilities().requestRecovery,
+        { cwd: native.primary, env: {} },
+        {},
       );
-      await flush();
-      assert.equal(native.sockets[attempt]?.readyState, 3);
+      await instance.stop();
       assert.equal(native.configuration.unknown_setting, "preserved");
     }
     assert.equal(written, true);
@@ -156,109 +157,35 @@ for (const withTrustWarning of [false, true]) {
   });
 }
 
-for (const unresolved of [
-  "details",
-  "path",
-  "range",
-  "missing-layer",
-  "extra-text",
-  "wrong-number",
-  "during-write",
-] as const) {
-  await test(`factory preserves a trust-shaped warning with ${unresolved}`, async (t) => {
+for (const phase of ["config/read", "config/value/write"] as const) {
+  await test(`factory accepts configuration warnings during ${phase} without changing unrelated settings`, async (t) => {
     const native = await nativeFixture(t);
     native.configuration.projects = null;
-    const warning: Record<string, unknown> = trustWarning(
-      native.primary,
-      "Project configuration is disabled until trusted.",
-    );
-    if (unresolved === "details")
-      warning.details = "An additional setting remains unresolved";
-    if (unresolved === "path")
-      warning.path = join(native.primary, "config.toml");
-    if (unresolved === "range")
-      warning.range = {
-        start: { line: 1, column: 1 },
-        end: { line: 1, column: 2 },
-      };
-    if (unresolved === "extra-text")
-      warning.summary = `${String(warning.summary)}Unknown config key: unknown_setting\n`;
-    if (unresolved === "wrong-number")
-      warning.summary = String(warning.summary).replace("    1. ", "    2. ");
-    native.handler = (request) => {
-      if (request.method === "initialize")
-        native.notify("configWarning", warning);
-      return {};
-    };
+    native.configuration.model = "preserved";
     const handleConfig = native.configHandler;
     native.configHandler = (request) => {
-      if (request.method === "config/read")
-        return {
-          config: native.configuration,
-          origins: {},
-          layers:
-            unresolved === "missing-layer"
-              ? []
-              : [projectLayer(native.primary)],
-        };
-      if (unresolved === "during-write")
-        native.notify("configWarning", warning);
+      if (request.method === phase)
+        native.notify("configWarning", {
+          summary: "Unrecognized configuration warning",
+          details: "private detail",
+          path: join(native.primary, "config.toml"),
+          range: { start: { line: 1, column: 1 }, end: { line: 1, column: 2 } },
+        });
       return handleConfig(request);
     };
-    await assert.rejects(
-      createEnhancement(
-        boundCapabilities().io,
-        boundCapabilities().requestRecovery,
-        { cwd: native.primary, env: {} },
-        {},
-      ),
-      /configuration warnings/,
-    );
-    await flush();
-    assert.equal(native.sockets[0]?.readyState, 3);
-  });
-}
-
-await test("factory retires a native trust warning only after every named project layer is enabled", async (t) => {
-  const native = await nativeFixture(t);
-  const nested = join(native.primary, "nested project");
-  const warning = trustWarning(native.primary, "Initial primary trust warning");
-  warning.summary += `    2. ${join(nested, ".codex")}\n       Initial nested trust warning\n`;
-  native.handler = (request) => {
-    if (request.method === "initialize")
-      native.notify("configWarning", warning);
-    return {};
-  };
-  let includeNested = true;
-  native.configHandler = () => ({
-    config: native.configuration,
-    origins: {},
-    layers: includeNested
-      ? [projectLayer(native.primary), projectLayer(nested)]
-      : [projectLayer(native.primary)],
-  });
-  const instance = await createEnhancement(
-    boundCapabilities().io,
-    boundCapabilities().requestRecovery,
-    { cwd: nested, env: {} },
-    {},
-  );
-  assert.equal(
-    native.requests.some(({ method }) => method === "config/value/write"),
-    false,
-  );
-  await instance.stop();
-  includeNested = false;
-  await assert.rejects(
-    createEnhancement(
+    const instance = await createEnhancement(
       boundCapabilities().io,
       boundCapabilities().requestRecovery,
-      { cwd: nested, env: {} },
+      { cwd: native.primary, env: {} },
       {},
-    ),
-    /configuration warnings/,
-  );
-});
+    );
+    assert.deepEqual(native.configuration.projects, {
+      [native.primary]: { trust_level: "trusted" },
+    });
+    assert.equal(native.configuration.model, "preserved");
+    await instance.stop();
+  });
+}
 
 await test("factory rejects a linked Worktree's explicit untrusted setting and disabled layer without warnings", async (t) => {
   const native = await nativeFixture(t);
@@ -396,5 +323,29 @@ for (const initiallyTrusted of [false, true]) {
       initiallyTrusted ? 0 : 1,
     );
     assert.equal(native.sockets[0]?.readyState, 3);
+  });
+}
+
+for (const status of ["ok", "okOverridden"]) {
+  await test(`factory accepts hook trust write ${status} with override metadata when readback proves trust`, async (t) => {
+    const native = await nativeFixture(t);
+    native.hooks.push(hook());
+    const write = native.configHandler;
+    native.configHandler = (request) => {
+      const result = write(request);
+      return request.params.keyPath === "hooks.state"
+        ? { status, overriddenMetadata: { message: "private policy" } }
+        : result;
+    };
+    const instance = await createEnhancement(
+      boundCapabilities().io,
+      boundCapabilities().requestRecovery,
+      { cwd: process.cwd(), env: {} },
+      {},
+    );
+    assert.deepEqual(native.configuration.hooks, {
+      state: { "new hook": { trusted_hash: "sha256:new hook" } },
+    });
+    await instance.stop();
   });
 }

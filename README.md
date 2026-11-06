@@ -66,13 +66,11 @@ The factory reads effective native configuration for the supplied cwd. A null or
 
 The factory also checks trust overrides for the supplied cwd and its Git task checkout root, and rejects disabled native project layers. An explicitly untrusted Worktree or cwd remains unchanged and prevents startup, even when the primary checkout is trusted.
 
-The factory retains complete configuration warnings. It retires only Codex 0.166.0's recognized disabled-project warning when every named folder has an enabled project layer in effective configuration. This applies to both newly trusted and already-trusted checkouts.
-
-Other initialization warnings remain fatal, including after a corrective trust write. Unknown warning formats and warnings received during writing or readback also reject the factory, as do Git failures, native configuration errors and managed write overrides.
+Configuration warnings do not prevent startup. Trust preparation checks effective checkout and hook trust without matching warning text. Write override metadata or status does not prevent startup when readback proves effective trust. Git failures, required native operation failures and unusable trust data still prevent startup.
 
 After checkout trust succeeds, the factory lists hooks for the task cwd through `hooks/list`. It automatically trusts new and modified definitions by upserting their current hashes into `hooks.state` through `config/value/write`. It writes only `trusted_hash`, preserving enabled settings and unrelated hook state. Disabled hooks stay disabled; already-trusted and managed hooks need no write.
 
-The factory re-lists hooks before returning and verifies the same keys and hashes are trusted, including managed hooks trusted by policy. Different keys, hashes or enabled settings prevent startup. Malformed responses, native errors, warnings and policy overrides also prevent startup. No allowlist, manual approval policy or bypass flag is used.
+The factory re-lists hooks before returning and verifies every current definition is trusted or managed by policy. Inventory changes, enabled settings and hook warnings do not prevent startup when current trust is effective. New untrusted hooks, modified definitions that remain untrusted, native errors and malformed required data prevent startup. No allowlist, manual approval policy or bypass flag is used.
 
 Failure releases the factory's owned connection and proxy; it preserves the shared daemon and other observers. A completed trust write remains persisted even if later verification fails. Successful trust changes are quiet and require no temporary Agent. This guarantees verified startup trust, not hook execution or dismissal of arbitrary later dialogs. Recreate the enhancement to prepare trust for definitions changed after preflight.
 
