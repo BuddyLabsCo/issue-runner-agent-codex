@@ -1,6 +1,6 @@
 {
   "name": "issue-runner-agent-codex",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Terminal-independent Codex enhancement for Issue Runner",
   "type": "module",
   "engines": {
