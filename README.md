@@ -152,3 +152,13 @@ Reconnection tests use the baseline capability/native fixtures and controlled ti
 Cleanup tests cover shared stop attempts, transient release failures, partial success without duplicate release, deferred terminal input, recovery callbacks, and proxy exit, operational errors during stop, factory failure cleanup, and instance isolation. They use the public lifecycle and portable native substitutes.
 
 See [code architecture](docs/code-architecture.md), [ticket #2](https://github.com/BuddyLabsCo/issue-runner-agent-codex/issues/2), [ticket #3](https://github.com/BuddyLabsCo/issue-runner-agent-codex/issues/3), [ticket #4](https://github.com/BuddyLabsCo/issue-runner-agent-codex/issues/4), [ticket #5](https://github.com/BuddyLabsCo/issue-runner-agent-codex/issues/5), [ticket #6](https://github.com/BuddyLabsCo/issue-runner-agent-codex/issues/6), and [ticket #7](https://github.com/BuddyLabsCo/issue-runner-agent-codex/issues/7) for ownership and scope.
+
+## Release implementation status
+
+The release automation targets the first stable `0.1.0` candidate. Main changes maintain one `auto-release` PR; its manual squash/rebase merge authorizes candidate verification and publication. Package verification accepts `RELEASE_TARBALL` unchanged and checks runtime isolation before installing development Core.
+
+Implementation checks use portable Git fixtures and GitHub/npm substitutes. They do not prove live App permissions, npm publication, Trusted Publisher configuration, or operation acceptance. Repository secrets `APP_ID` and `APP_PRIVATE_KEY`, and their installation permissions, remain unverified. First publication and acceptance belong to the human-operated follow-up.
+
+[Core run 42211953511](https://github.com/BuddyLabsCo/issue-runner-core/actions/runs/42211953511) recovered matching, already-published `0.1.0` bytes and completed its tag and Release. It does not demonstrate a subsequent genuine OIDC publication; that proof remains unverified here.
+
+Proposal and publication workflows retain separate concurrency groups. Because tags follow npm publication, complete any partial-publication recovery before advancing another release.

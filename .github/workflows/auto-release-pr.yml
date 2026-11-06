@@ -1,0 +1,44 @@
+name: auto-release
+
+on:
+  push:
+    branches:
+      - main
+
+# Release pull requests are written with the repository-scoped GitHub App
+# installation, so the default token stays read-only and workflow-created pull
+# requests stay unapproved. Merge stays a human action.
+permissions:
+  contents: read
+
+concurrency:
+  group: auto-release-pr
+  cancel-in-progress: false
+
+jobs:
+  prepare-release:
+    name: Open or update the release pull request
+    runs-on: ubuntu-latest
+    steps:
+      - name: Generate the GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ secrets.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          owner: BuddyLabsCo
+          repositories: issue-runner-agent-codex
+      - name: Check out the repository
+        uses: actions/checkout@v7
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          fetch-depth: 0
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - name: Open or update the release pull request
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          PUSH_BEFORE: ${{ github.event.before }}
+        run: node scripts/release/auto-release-pr.ts
