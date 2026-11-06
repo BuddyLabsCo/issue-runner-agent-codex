@@ -133,7 +133,7 @@ await test("imports the packed runtime without Core, then checks declarations ag
   assert.deepEqual(manifest.exports, {
     ".": { types: "./dist/index.d.ts", default: "./dist/index.js" },
   });
-  assert.equal(manifest.devDependencies["issue-runner-core"], "0.1.0");
+  assert.equal(manifest.devDependencies["issue-runner-core"], "0.1.1");
   assert.equal(manifest.dependencies?.["issue-runner-core"], undefined);
   assert.equal(manifest.optionalDependencies, undefined);
   assert.equal(manifest.bundledDependencies, undefined);
@@ -168,7 +168,7 @@ await test("imports the packed runtime without Core, then checks declarations ag
       "--ignore-scripts",
       "--no-audit",
       "--no-fund",
-      "issue-runner-core@0.1.0",
+      "issue-runner-core@0.1.1",
     ],
     scratch,
   );
@@ -230,22 +230,22 @@ await test("imports the packed runtime without Core, then checks declarations ag
   assert.equal(lock.packages[""]?.version, sourceManifest.version);
   assert.equal(
     lock.packages[""]?.devDependencies?.["issue-runner-core"],
-    "0.1.0",
+    "0.1.1",
   );
   const core = lock.packages["node_modules/issue-runner-core"]!;
   assert.equal(
     core.resolved,
-    "https://registry.npmjs.org/issue-runner-core/-/issue-runner-core-0.1.0.tgz",
+    "https://registry.npmjs.org/issue-runner-core/-/issue-runner-core-0.1.1.tgz",
   );
   assert.equal(core.dev, true);
-  assert.equal(core.version, "0.1.0");
+  assert.equal(core.version, "0.1.1");
   assert.match(core.integrity ?? "", /^sha512-[A-Za-z0-9+/]+={0,2}$/);
   const consumerLock = JSON.parse(
     await readFile(join(scratch, "package-lock.json"), "utf8"),
   ) as typeof lock;
   assert.equal(
     consumerLock.packages[""]?.devDependencies?.["issue-runner-core"],
-    "0.1.0",
+    "0.1.1",
   );
   const installedCore =
     consumerLock.packages["node_modules/issue-runner-core"]!;
