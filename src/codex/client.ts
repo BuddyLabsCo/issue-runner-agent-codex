@@ -155,7 +155,7 @@ export class NativeClient {
       if (!this.available || this.stopped) failed();
     });
     await this.request("initialize", {
-      clientInfo: { name: "issue-runner-agent-codex", version: "0.0.0-dev.1" },
+      clientInfo: { name: "issue-runner-agent-codex", version: "0.1.0" },
       capabilities: { experimentalApi: false, requestAttestation: false },
     });
     this.socket.send(JSON.stringify({ method: "initialized" }));
