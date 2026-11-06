@@ -143,7 +143,9 @@ await test("initialization and preflight errors survive cleanup failure with a s
           { cwd: process.cwd(), env: {} },
           {},
         ),
-        /Codex RPC request failed/,
+        stage === "preflight"
+          ? /Codex config\/read failed/
+          : /Codex RPC request failed/,
       );
       await flush();
       assert.deepEqual(stderr, [

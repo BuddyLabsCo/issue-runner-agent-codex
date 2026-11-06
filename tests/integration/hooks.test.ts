@@ -12,7 +12,7 @@ import {
 await test("factory trusts a newly added hook by its current hash before startup", async (t) => {
   const native = await nativeFixture(t);
   native.hooks.push(
-    hook(),
+    { ...hook(), enabled: false },
     { ...hook("trusted"), trustStatus: "trusted" },
     { ...hook("managed"), trustStatus: "managed", isManaged: true },
   );
@@ -188,16 +188,46 @@ await test("factory rejects a changed hash on hook readback and cleans up its pr
   assert.deepEqual(bound.inputs, []);
 });
 
+for (const phase of ["list", "write", "readback"] as const) {
+  await test(`factory accepts hook inventory and configuration warnings during ${phase}`, async (t) => {
+    const native = await nativeFixture(t);
+    native.hooks.push(hook());
+    const list = native.hooksHandler;
+    let reads = 0;
+    native.hooksHandler = (request) => {
+      const response = list(request) as { data: { warnings: unknown[] }[] };
+      if (++reads === (phase === "list" ? 1 : 2)) {
+        native.notify("configWarning", { summary: "private hook warning" });
+        response.data[0]!.warnings = ["private inventory warning"];
+      }
+      return response;
+    };
+    const write = native.configHandler;
+    native.configHandler = (request) => {
+      if (phase === "write" && request.params.keyPath === "hooks.state")
+        native.notify("configWarning", { summary: "private write warning" });
+      return write(request);
+    };
+    const instance = await createEnhancement(
+      boundCapabilities().io,
+      boundCapabilities().requestRecovery,
+      { cwd: process.cwd(), env: {} },
+      {},
+    );
+    assert.deepEqual(native.configuration.hooks, {
+      state: { "new hook": { trusted_hash: "sha256:new hook" } },
+    });
+    await instance.stop();
+  });
+}
+
 for (const failure of [
   "list-error",
   "write-error",
   "readback-error",
-  "policy-rejected",
-  "policy-overridden",
+  "ineffective-overridden-status",
+  "ineffective-override-metadata",
   "malformed-write",
-  "list-warning",
-  "write-warning",
-  "readback-warning",
 ] as const) {
   await test(`factory rejects hook ${failure} and preserves other observers and terminal state`, async (t) => {
     const native = await nativeFixture(t);
@@ -217,11 +247,6 @@ for (const failure of [
         (failure === "readback-error" && reads === 2)
       )
         throw new Error("private hook read error");
-      if (
-        (failure === "list-warning" && reads === 1) ||
-        (failure === "readback-warning" && reads === 2)
-      )
-        native.notify("configWarning", { summary: "private hook warning" });
       return list(request);
     };
     const write = native.configHandler;
@@ -229,10 +254,9 @@ for (const failure of [
       if (request.params.keyPath === "hooks.state") {
         if (failure === "write-error")
           throw new Error("private hook write error");
-        if (failure === "write-warning")
-          native.notify("configWarning", { summary: "private write warning" });
-        if (failure === "policy-rejected") return { status: "okOverridden" };
-        if (failure === "policy-overridden")
+        if (failure === "ineffective-overridden-status")
+          return { status: "okOverridden" };
+        if (failure === "ineffective-override-metadata")
           return {
             status: "ok",
             overriddenMetadata: { message: "private policy" },
@@ -250,7 +274,18 @@ for (const failure of [
         { cwd: process.cwd(), env: {} },
         {},
       ),
-      /Codex/,
+      (error: Error) => {
+        assert.match(
+          error.message,
+          failure === "list-error" || failure === "readback-error"
+            ? /hooks\/list/
+            : failure === "write-error" || failure === "malformed-write"
+              ? /config\/value\/write.*hooks.state/
+              : /hook trust.*verif/,
+        );
+        assert.doesNotMatch(error.message, /private|secret/);
+        return true;
+      },
     );
     await flush();
     assert.equal(native.sockets[1]?.readyState, 3);
@@ -269,30 +304,28 @@ for (const failure of [
 }
 
 for (const [name, changes] of [
-  ["missing hook", { hooks: [] }],
+  ["removed hook", { hooks: [] }],
   [
-    "unexpected hook",
+    "additional trusted disabled hook",
     {
       hooks: [
         { ...hook(), trustStatus: "trusted" },
-        { ...hook("added"), trustStatus: "trusted" },
+        { ...hook("added"), enabled: false, trustStatus: "trusted" },
       ],
     },
   ],
   [
-    "different key",
+    "different trusted key",
     { hooks: [{ ...hook("different"), trustStatus: "trusted" }] },
   ],
   [
-    "stale hash reported trusted",
+    "changed trusted definition",
     {
       hooks: [
-        { ...hook(), currentHash: "sha256:stale", trustStatus: "trusted" },
+        { ...hook(), currentHash: "sha256:changed", trustStatus: "trusted" },
       ],
     },
   ],
-  ["still untrusted", { hooks: [hook()] }],
-  ["still modified", { hooks: [{ ...hook(), trustStatus: "modified" }] }],
   [
     "changed enabled setting",
     { hooks: [{ ...hook(), enabled: false, trustStatus: "trusted" }] },
@@ -301,7 +334,45 @@ for (const [name, changes] of [
     "changed managed setting",
     { hooks: [{ ...hook(), isManaged: true, trustStatus: "managed" }] },
   ],
-  ["hook warning", { warnings: ["private inventory warning"] }],
+] as const) {
+  await test(`factory accepts effective hook trust with ${name}`, async (t) => {
+    const native = await nativeFixture(t);
+    native.hooks.push(hook());
+    const list = native.hooksHandler;
+    let reads = 0;
+    native.hooksHandler = (request) =>
+      ++reads === 1
+        ? list(request)
+        : {
+            data: [
+              { cwd: process.cwd(), errors: [], warnings: [], ...changes },
+            ],
+          };
+    const bound = boundCapabilities();
+    const instance = await createEnhancement(
+      bound.io,
+      bound.requestRecovery,
+      { cwd: process.cwd(), env: {} },
+      {},
+    );
+    assert.deepEqual(bound.inputs, []);
+    assert.equal(reads, 2);
+    await instance.stop();
+  });
+}
+
+for (const [name, changes] of [
+  ["still untrusted", { hooks: [hook()] }],
+  ["still modified", { hooks: [{ ...hook(), trustStatus: "modified" }] }],
+  [
+    "additional untrusted disabled hook",
+    {
+      hooks: [
+        { ...hook(), trustStatus: "trusted" },
+        { ...hook("added"), enabled: false },
+      ],
+    },
+  ],
   [
     "hook error",
     { errors: [{ path: "private path", message: "private inventory error" }] },
@@ -333,7 +404,7 @@ for (const [name, changes] of [
         { cwd: process.cwd(), env: {} },
         {},
       ),
-      /Codex/,
+      /Codex hook/,
     );
     await flush();
     assert.equal(native.sockets[0]?.readyState, 3);
@@ -346,10 +417,6 @@ for (const [name, response] of [
   [
     "missing hooks",
     { data: [{ cwd: process.cwd(), errors: [], warnings: [] }] },
-  ],
-  [
-    "missing warning evidence",
-    { data: [{ cwd: process.cwd(), hooks: [], errors: [] }] },
   ],
   [
     "another cwd",
@@ -371,7 +438,6 @@ for (const [name, response] of [
         "hook errors",
         { errors: [{ path: "private path", message: "private error" }] },
       ],
-      ["hook warnings", { warnings: ["private warning"] }],
       ["invalid hooks", { hooks: null }],
       ["empty hash", { hooks: [{ ...hook(), currentHash: "" }] }],
       ["empty key", { hooks: [{ ...hook(), key: "" }] }],
