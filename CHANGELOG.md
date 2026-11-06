@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.1
+
+- - chore: [issue-42] update Core dependency to 0.1.1 (#43)
+
 ## 0.1.0
 
 - - feat: [issue-36] automate stable Codex enhancement releases (#40)
