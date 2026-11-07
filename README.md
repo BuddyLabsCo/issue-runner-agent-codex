@@ -36,7 +36,9 @@ Retain your chosen model, effort, and native permission settings as appropriate 
 
 Core activates the enhancement automatically for `codex` roles. A missing or contract-incompatible enhancement uses base startup; incompatible versions produce a skip notice. Invalid packages and initialization failures are errors. If activation is missing, check the role's `codex` identifier and the installation prefix. If readiness fails, check authentication, the shared-daemon flags, and startup prompts before retrying through [Core's Operator Pause](https://github.com/BuddyLabsCo/issue-runner-core#operator-pause).
 
-Before Codex starts, the enhancement trusts the primary Git checkout and current hook definitions, then verifies effective trust. Disabled hooks stay disabled. An explicitly untrusted task checkout or disabled project layer blocks startup. Bare repositories and separate-git-dir layouts are unsupported. Trust changes persist after cleanup; preflight does not guarantee hook execution or dismiss arbitrary later dialogs.
+Before Codex starts, the enhancement trusts the primary Git checkout and current hook definitions, then verifies effective trust. Preparing primary checkout trust replaces even an explicit `untrusted` value. Separate distrust overrides for the task cwd or Worktree and disabled project layers still block startup. Disabled hooks stay disabled.
+
+Bare repositories and separate-git-dir layouts are unsupported. Trust changes persist after cleanup; preflight does not guarantee hook execution or dismiss arbitrary later dialogs.
 
 Startup submits a GUID shell marker and a minimal `READY` prompt through the terminal. A marker's command-not-found result is expected: its native `userShell` record identifies the conversation. Readiness requires observing the matching model turn start, not its answer. Observation and successful trust preparation are quiet.
 

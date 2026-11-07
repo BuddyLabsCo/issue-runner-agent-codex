@@ -60,7 +60,7 @@ Keep policy with the feature that owns it; keep native I/O behind `codex/`.
 | `index.ts` | Export only `contractVersion = 2` and `createEnhancement`. |
 | `enhancement.ts` | Validate configuration, connect, await preflight, assemble per-Tab instances, and expose the four lifecycle methods. Coordinate immediate cancellation and retryable resource cleanup. |
 | `config.ts` | Validate shared enhancement options and apply defaults. Configuration-field explanations live in Core's template comments. |
-| `preflight/` | Verify effective primary checkout and task trust; trust current hook hashes and verify readback. Preserve explicit distrust, disabled hooks, unrelated settings and persisted writes. |
+| `preflight/` | Establish and verify primary checkout trust, replacing an explicit `untrusted` value when necessary. Preserve separate distrust overrides for the task cwd or Worktree, disabled hooks, unrelated settings and persisted writes. Trust current hook hashes and verify readback. |
 | `session/` | Submit GUID markers through bound I/O, identify the enclosing native conversation, and correlate the bootstrap prompt with its model turn start. Own readiness deadlines and retry evidence. |
 | `monitor/` | Bind one exact native ref, retain Assignment ID and expected file together, filter notifications, refresh snapshots and reconnect. Invalidate stale asynchronous observations on replacement, new turns, disconnect and stop. |
 | `recovery/` | Decide eligibility from current facts, complete final replies and file presence. Own separate budgets, delays, cancellation and originating-Assignment rechecks before calling `requestRecovery(id)`. |

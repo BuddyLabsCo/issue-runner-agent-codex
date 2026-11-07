@@ -54,7 +54,7 @@ sequenceDiagram
 
 ### Checkout and hook trust
 
-Portable Git discovery identifies the ordinary primary checkout, including from a linked Worktree. Preflight reads effective trust rather than matching warning text. Explicit task distrust or a disabled project layer rejects startup; warnings alone do not.
+Portable Git discovery identifies the ordinary primary checkout, including from a linked Worktree. Preflight establishes primary checkout trust, replacing an explicit `untrusted` value when necessary, then checks separate task cwd or Worktree overrides. Those distrust overrides or a disabled project layer reject startup; warnings alone do not.
 
 ```mermaid
 sequenceDiagram
