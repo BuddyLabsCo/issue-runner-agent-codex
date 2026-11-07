@@ -1,42 +1,46 @@
-# Code Architecture
+# Code architecture
+
+Use this map to place enhancement code and tests. Interface behavior belongs in [Core's public integration contract](https://github.com/BuddyLabsCo/issue-runner-core/blob/main/docs/terminal-contract.md); native interactions belong in [Codex protocol](codex-protocol.md).
+
+## Directory map
 
 ```text
 /
-|-- src/                       # Public exports and enhancement assembly
-|   |-- index.ts               # contractVersion and createEnhancement; Core contract only
-|   |-- enhancement.ts         # Per-Tab lifecycle, current assignment and resource cleanup
-|   |-- config.ts              # Configuration validation and defaults
-|   |-- preflight/             # Primary checkout trust and hook trust
-|   |-- session/               # GUID discovery, session binding and input readiness
-|   |-- monitor/               # Notifications, latest thread/turn state and reconnection
-|   |-- recovery/              # Error/handoff recovery, budgets, waits and cancellation
-|   |-- codex/                 # Native Codex configuration, RPC and portable I/O
-|   `-- diagnostics.ts         # Terminal errors and recovery-request output
-|-- scripts/release/           # Independent stable Release PRs and exact-candidate publication
+|-- src/
+|   |-- index.ts               # Public contractVersion and createEnhancement exports
+|   |-- enhancement.ts         # Per-Tab lifecycle assembly and coordinated cleanup
+|   |-- config.ts              # Enhancement option validation and defaults
+|   |-- diagnostics.ts         # Redacted notices on inherited Runner stderr
+|   |-- preflight/             # Effective checkout and hook trust before startup
+|   |-- session/               # GUID identification and verified model-start readiness
+|   |-- monitor/               # Bound conversation, Assignment, state and reconnection
+|   |-- recovery/              # Recovery eligibility, budgets, waits and cancellation
+|   `-- codex/                 # Native protocol, Git discovery and portable file I/O
 |-- tests/
-|   |-- unit/                  # Configuration, marker matching, recovery rules and static quality checks
-|   |-- integration/           # Enhancement lifecycle through injected capabilities and native protocol substitutes
-|   |-- release/               # Real Git fixtures and portable GitHub/npm substitutes
-|   |-- package/               # Built exports, optional installation and Core contract compatibility
-|   `-- fixtures/             # Scripted capabilities, clock and Codex responses; no terminal-plugin dependency
-|-- docs/                      # Architecture, decisions and usage
-|-- .github/workflows/         # Static checks and tests on Ubuntu and Windows
-`-- dist/                      # Generated output
+|   |-- unit/                  # Static architecture and quality rules
+|   |-- integration/           # Public lifecycle through injected/native substitutes
+|   |-- package/               # Installed exports, runtime isolation and Core types
+|   |-- fixtures/              # Bound I/O, controlled clock and native byte bridge
+|   `-- release/               # Release scripts through Git/GitHub/npm fixtures
+|-- scripts/release/           # Independent candidate and publication tooling
+|-- docs/                      # Protocol, architecture and agent instructions
+|-- .github/workflows/         # Checks and tests on Ubuntu and Windows
+`-- dist/                      # Generated JavaScript and declarations
 ```
 
-```text
-index.ts -> enhancement.ts -> preflight/ | session/ | monitor/ | recovery/
-                          -> codex/ -> Codex shared daemon
-                          # Feature modules share Codex operations and the injected capabilities
-                          # config.ts and diagnostics.ts stay independent of lifecycle policy
-```
+## Module ownership
 
-- Public exports: `contractVersion` is `2`; `createEnhancement(io, requestRecovery, context, config)` consumes only type imports from `issue-runner-core/terminal`. Core is a development dependency, with no runtime or peer coupling. No Core workflow internals or terminal-plugin dependencies.
-- `enhancement.ts` assembles the private modules and implements the public lifecycle. `preflight/` completes trust before startup; `session/` establishes binding and ready, without business recovery or Assignment creation. Readiness uses only bound `TerminalIO`.
-- `monitor/` retains Assignment ID and expected file together, invalidates observations on replacement, and owns native facts and reconnect; `recovery/` decides whether to request recovery from Core, including `[action required]`, excluded errors, separate budgets, waits and cancellation. A fresh Assignment ID resets context even at the same path. Recovery retains the originating Assignment through asynchronous work and dispatches only `requestRecovery(originatingId)` after validity rechecks.
-- Keep native protocol and filesystem I/O in `codex/`, without imports from lifecycle or feature modules. Preserve the shared daemon and unrelated sessions. `config.ts` and `diagnostics.ts` do not import feature modules.
-- The terminal plugin owns interactive start/resume commands and terminal I/O. Core owns lifecycle orchestration, readiness pause controls, capability revocation, queued stale-input enforcement, recovery wording, handoff acceptance, and tab closure; task handoffs supply PR metadata. A fulfilled recovery callback can be a stale no-op and does not prove native input occurred.
-- **OS-bound code is prohibited throughout this repository, including adapters, tests and fixtures.** No platform branches, OS-specific commands, fixed native paths/socket conventions, shell-dependent execution, PTY handling or native key codes. Use portable Node APIs and the injected capabilities; there is no platform-specific adapter exception.
-- Keep helpers beside their owner. The tree defines the target layout; add modules when needed, not as empty scaffolding.
-- Run `npm run check` for formatting, lint and types; `npm test` verifies the quality rules.
-- `scripts/release/` owns proposal eligibility, release identity, candidate packing and publication recovery. It does not import runtime enhancement modules. Release tests substitute external GitHub/npm boundaries without platform exceptions.
+Keep policy with the feature that owns it; keep native I/O behind `codex/`.
+
+| Owner | Responsibilities |
+| --- | --- |
+| `index.ts` | Export only `contractVersion = 2` and `createEnhancement`. |
+| `enhancement.ts` | Validate configuration, connect, await preflight, assemble per-Tab instances, and expose the four lifecycle methods. Coordinate immediate cancellation and retryable resource cleanup. |
+| `config.ts` | Validate shared enhancement options and apply defaults. Configuration-field explanations live in Core's template comments. |
+| `preflight/` | Establish and verify primary checkout trust, replacing an explicit `untrusted` value when necessary. Preserve separate distrust overrides for the task cwd or Worktree, disabled hooks, unrelated settings and persisted writes. Trust current hook hashes and verify readback. |
+| `session/` | Submit GUID markers through bound I/O, identify the enclosing native conversation, and correlate the bootstrap prompt with its model turn start. Own readiness deadlines and retry evidence. |
+| `monitor/` | Bind one exact native ref, retain Assignment ID and expected file together, filter notifications, refresh snapshots and reconnect. Invalidate stale asynchronous observations on replacement, new turns, disconnect and stop. |
+| `recovery/` | Decide eligibility from current facts, complete final replies and file presence. Own separate budgets, delays, cancellation and originating-Assignment rechecks before calling `requestRecovery(id)`. |
+| `codex/` | Start/connect to the shared daemon, implement framed WebSocket RPC over the owned proxy, configuration/hook operations, Git checkout discovery and file existence checks. Release only owned connections and proxies. |
+| `diagnostics.ts` | Format enhancement notices without native payloads, credentials or transport close reasons. |
+| `scripts/release/` | Own release identity, candidate packing and publication recovery independently of enhancement runtime code. |
