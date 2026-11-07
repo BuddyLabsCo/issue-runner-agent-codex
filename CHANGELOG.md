@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.1.3
+## 1.0.0
 
 - - docs: [issue-38] consolidate Codex enhancement documentation (#48)
 
