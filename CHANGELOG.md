@@ -1,12 +1,18 @@
 # Changelog
 
+## 0.1.3
+
+- - docs: [issue-38] consolidate Codex enhancement documentation (#48)
+
 ## 0.1.2
 
 - - fix: [issue-45] verify effective startup trust (#46)
 
+
 ## 0.1.1
 
 - - chore: [issue-42] update Core dependency to 0.1.1 (#43)
+
 
 
 ## 0.1.0
