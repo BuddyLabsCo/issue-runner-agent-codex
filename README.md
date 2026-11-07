@@ -8,7 +8,7 @@ Install and [authenticate native Codex](https://developers.openai.com/codex/auth
 
 The native protocol baseline is Codex CLI/app-server **0.166.0**, including `codex app-server daemon start` and `codex app-server proxy`. The interactive session must use the same shared daemon as the enhancement. In Codex **0.167.0**, command-line configuration overrides select an embedded server unless you specify `--remote unix://`; use it on both start and resume. See [Core's Codex connection guidance](https://github.com/BuddyLabsCo/issue-runner-core#codex-enhancement-requires---remote-unix).
 
-This package declares Node.js `>=22.18.0 <23` and npm `>=11 <12`. Follow [Core prerequisites](https://github.com/BuddyLabsCo/issue-runner-core#prerequisites) for the terminal command, Git/GitHub setup, Agent permissions, and handoff skill.
+This package requires Node.js `>=22.18.0` and npm `>=11`. Follow [Core prerequisites](https://github.com/BuddyLabsCo/issue-runner-core#prerequisites) for the terminal command, Git/GitHub setup, Agent permissions, and handoff skill.
 
 ## Getting started
 
