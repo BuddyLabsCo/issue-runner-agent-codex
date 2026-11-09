@@ -4,6 +4,7 @@ import { test, type TestContext } from "node:test";
 import { createEnhancement } from "../../src/index.ts";
 import {
   bootstrapCapabilities,
+  completeShellTurn,
   flush,
   hook,
   nativeFixture,
@@ -40,14 +41,7 @@ async function assertReadyWithHookFailure(
   await instance.startMonitoring("known");
   const ready = instance.waitUntilReady();
   await flush();
-  native.notify("item/completed", {
-    threadId: "known",
-    item: {
-      type: "commandExecution",
-      source: "userShell",
-      command: bound.inputs[0]!.slice(1),
-    },
-  });
+  completeShellTurn(native, bound.inputs[0]!.slice(1));
   assert.equal(await ready, "known");
   assert.deepEqual(
     messages.filter((message) => message.startsWith("[codex] ")),
