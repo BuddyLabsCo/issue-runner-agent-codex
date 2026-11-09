@@ -5,6 +5,24 @@ import { createEnhancement } from "../../src/index.ts";
 import { boundCapabilities, flush, nativeFixture } from "../fixtures/native.ts";
 import { failedThread, recoveryFixture } from "../fixtures/recovery.ts";
 
+await test("metadata during the final history read does not cancel or duplicate recovery", async (t) => {
+  const { instance, native, bound, state } = await recoveryFixture(t);
+  await instance.startMonitoring("known");
+  native.handler = (request) => {
+    assert.equal(request.method, "thread/read");
+    native.notify("thread/goal/cleared", { threadId: "known" });
+    native.notify("mcpServer/startupStatus/updated", { threadId: "known" });
+    return { thread: state.snapshot };
+  };
+  t.mock.timers.tick(10_000);
+  await flush();
+  assert.equal(bound.recoveries, 1);
+  assert.equal(
+    native.requests.filter(({ method }) => method === "thread/read").length,
+    2,
+  );
+});
+
 await test("assignment, native retry and stop during the file check prevent stale submission", async (t) => {
   for (const trigger of [
     "assignment",

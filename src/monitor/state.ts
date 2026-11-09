@@ -276,7 +276,16 @@ export class Observation {
     if (method === "error" && params.turnId === this.thread?.turns.at(-1)?.id)
       this.willRetry =
         typeof params.willRetry === "boolean" ? params.willRetry : undefined;
-    this.invalidate();
+    if (
+      [
+        "item/started",
+        "item/completed",
+        "turn/started",
+        "turn/completed",
+        "error",
+      ].includes(method)
+    )
+      this.invalidate();
   }
 
   stop(): void {
