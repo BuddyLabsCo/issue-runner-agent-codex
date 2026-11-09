@@ -19,7 +19,9 @@ export async function listHooks(client: NativeClient, cwd: string) {
     entry.errors.length !== 0 ||
     !Array.isArray(entry.hooks)
   )
-    throw new Error("Codex hook inventory has errors or invalid data");
+    throw new Error("Codex hook inventory has errors or invalid data", {
+      cause: entry.errors,
+    });
   const keys = new Set<string>();
   return entry.hooks.map((value: unknown) => {
     const hook = object(value);

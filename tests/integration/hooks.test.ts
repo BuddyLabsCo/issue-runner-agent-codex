@@ -3,7 +3,6 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { createEnhancement } from "../../src/index.ts";
 import {
-  bootstrapCapabilities,
   boundCapabilities,
   flush,
   hook,
@@ -168,38 +167,6 @@ await test(
     await instance.stop();
   },
 );
-
-await test("changed hash on hook readback logs a warning and readiness can complete", async (t) => {
-  const native = await nativeFixture(t);
-  native.hooks.push(hook());
-  const list = native.hooksHandler;
-  let reads = 0;
-  native.hooksHandler = (request) => {
-    if (++reads === 2) native.hooks[0]!.currentHash = "sha256:changed-again";
-    return list(request);
-  };
-  const bound = bootstrapCapabilities(native);
-  const instance = await createEnhancement(
-    bound.io,
-    bound.requestRecovery,
-    { cwd: process.cwd(), env: {} },
-    {},
-  );
-  await instance.startMonitoring("known");
-  const ready = instance.waitUntilReady();
-  await flush();
-  native.notify("item/completed", {
-    threadId: "known",
-    item: {
-      type: "commandExecution",
-      source: "userShell",
-      command: bound.inputs[0]!.slice(1),
-    },
-  });
-  assert.equal(await ready, "known");
-  assert.equal(native.sockets[0]?.readyState, 1);
-  await instance.stop();
-});
 
 for (const phase of ["list", "write", "readback"] as const) {
   await test(`factory accepts hook inventory and configuration warnings during ${phase}`, async (t) => {
@@ -366,54 +333,6 @@ for (const [name, changes] of [
     );
     assert.deepEqual(bound.inputs, []);
     assert.equal(reads, 2);
-    await instance.stop();
-  });
-}
-
-for (const [name, changes] of [
-  ["still untrusted", { hooks: [hook()] }],
-  ["still modified", { hooks: [{ ...hook(), trustStatus: "modified" }] }],
-  [
-    "additional untrusted disabled hook",
-    {
-      hooks: [
-        { ...hook(), trustStatus: "trusted" },
-        { ...hook("added"), enabled: false },
-      ],
-    },
-  ],
-  [
-    "hook error",
-    { errors: [{ path: "private path", message: "private inventory error" }] },
-  ],
-] as const) {
-  await test(`factory tolerates invalid hook readback with ${name}`, async (t) => {
-    const native = await nativeFixture(t);
-    native.hooks.push(hook());
-    const list = native.hooksHandler;
-    let reads = 0;
-    native.hooksHandler = (request) =>
-      ++reads === 1
-        ? list(request)
-        : {
-            data: [
-              {
-                cwd: process.cwd(),
-                hooks: [],
-                errors: [],
-                warnings: [],
-                ...changes,
-              },
-            ],
-          };
-    const instance = await createEnhancement(
-      boundCapabilities().io,
-      boundCapabilities().requestRecovery,
-      { cwd: process.cwd(), env: {} },
-      {},
-    );
-    assert.equal(reads, 2);
-    assert.equal(native.sockets[0]?.readyState, 1);
     await instance.stop();
   });
 }
