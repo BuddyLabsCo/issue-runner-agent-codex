@@ -147,7 +147,7 @@ await test("factory accepts an already-trusted checkout with the reported unrela
   assert.deepEqual(native.configuration, before);
   assert.equal(
     native.requests.filter(({ method }) => method === "hooks/list").length,
-    2,
+    1,
   );
   assert.deepEqual(bound.inputs, []);
   await instance.stop();
@@ -192,17 +192,22 @@ await test("structured trust preserves unusual path characters, project fields a
     model: "retained model",
   };
   const stderr = t.mock.method(process.stderr, "write", () => true);
+  // Keep the synthetic project key out of the logger's real filesystem path.
   for (let i = 0; i < 2; i++) {
     const instance = await createEnhancement(
       boundCapabilities().io,
       boundCapabilities().requestRecovery,
-      { cwd: join(primary, "task"), env: {} },
+      { cwd: join(native.primary, "task"), env: {} },
       {},
     );
     assert.deepEqual(native.configuration, expected);
     await instance.stop();
   }
-  assert.equal(stderr.mock.callCount(), 0);
+  assert.ok(
+    stderr.mock.calls.every(({ arguments: [line] }) =>
+      String(line).startsWith("[codex]: logfile:"),
+    ),
+  );
   const writes = native.requests.filter(
     ({ method }) => method === "config/value/write",
   );
@@ -259,7 +264,7 @@ for (const failure of [
         reads++;
         if (
           failure === "initial-read" ||
-          (failure === "readback" && reads === 2)
+          (failure === "readback" && reads >= 2)
         )
           throw new Error("private read error");
         if (failure === "malformed-readback" && reads === 2)

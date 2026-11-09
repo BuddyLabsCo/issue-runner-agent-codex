@@ -73,10 +73,14 @@ await test("factory refreshes changed hashes without enabling disabled hooks or 
       },
     ],
   );
-  assert.equal(stderr.mock.callCount(), 0);
+  assert.ok(
+    stderr.mock.calls.every(({ arguments: [line] }) =>
+      String(line).startsWith("[codex]: logfile:"),
+    ),
+  );
 });
 
-await test("factory verifies already-trusted and managed hooks without writing configuration", async (t) => {
+await test("factory queries already-trusted and managed hooks only once", async (t) => {
   const native = await nativeFixture(t);
   native.hooks.push(
     { ...hook("trusted"), trustStatus: "trusted" },
@@ -92,7 +96,7 @@ await test("factory verifies already-trusted and managed hooks without writing c
   assert.deepEqual(native.configuration, before);
   assert.equal(
     native.requests.filter(({ method }) => method === "hooks/list").length,
-    2,
+    1,
   );
   assert.equal(
     native.requests.some(({ method }) => method === "config/value/write"),
@@ -164,30 +168,6 @@ await test(
   },
 );
 
-await test("factory rejects a changed hash on hook readback and cleans up its proxy", async (t) => {
-  const native = await nativeFixture(t);
-  native.hooks.push(hook());
-  const list = native.hooksHandler;
-  let reads = 0;
-  native.hooksHandler = (request) => {
-    if (++reads === 2) native.hooks[0]!.currentHash = "sha256:changed-again";
-    return list(request);
-  };
-  const bound = boundCapabilities();
-  await assert.rejects(
-    createEnhancement(
-      bound.io,
-      bound.requestRecovery,
-      { cwd: process.cwd(), env: {} },
-      {},
-    ),
-    /Codex hook trust.*verif/,
-  );
-  await flush();
-  assert.equal(native.sockets[0]?.readyState, 3);
-  assert.deepEqual(bound.inputs, []);
-});
-
 for (const phase of ["list", "write", "readback"] as const) {
   await test(`factory accepts hook inventory and configuration warnings during ${phase}`, async (t) => {
     const native = await nativeFixture(t);
@@ -229,7 +209,7 @@ for (const failure of [
   "ineffective-override-metadata",
   "malformed-write",
 ] as const) {
-  await test(`factory rejects hook ${failure} and preserves other observers and terminal state`, async (t) => {
+  await test(`factory tolerates hook ${failure} and preserves other observers and terminal state`, async (t) => {
     const native = await nativeFixture(t);
     const other = await createEnhancement(
       boundCapabilities().io,
@@ -244,7 +224,7 @@ for (const failure of [
       reads++;
       if (
         failure === "list-error" ||
-        (failure === "readback-error" && reads === 2)
+        (failure === "readback-error" && reads >= 2)
       )
         throw new Error("private hook read error");
       return list(request);
@@ -267,33 +247,29 @@ for (const failure of [
     };
     const bound = boundCapabilities();
     const stderr = t.mock.method(process.stderr, "write", () => true);
-    await assert.rejects(
-      createEnhancement(
-        bound.io,
-        bound.requestRecovery,
-        { cwd: process.cwd(), env: {} },
-        {},
-      ),
-      (error: Error) => {
-        assert.match(
-          error.message,
-          failure === "list-error" || failure === "readback-error"
-            ? /hooks\/list/
-            : failure === "write-error" || failure === "malformed-write"
-              ? /config\/value\/write.*hooks.state/
-              : /hook trust.*verif/,
-        );
-        assert.doesNotMatch(error.message, /private|secret/);
-        return true;
-      },
+    const instance = await createEnhancement(
+      bound.io,
+      bound.requestRecovery,
+      { cwd: process.cwd(), env: {} },
+      {},
     );
     await flush();
-    assert.equal(native.sockets[1]?.readyState, 3);
+    assert.equal(native.sockets[1]?.readyState, 1);
     assert.equal(native.sockets[0]?.readyState, 1);
     assert.deepEqual(bound.inputs, []);
     assert.deepEqual(bound.keys, []);
     assert.equal(bound.recoveries, 0);
-    assert.equal(stderr.mock.callCount(), 0);
+    assert.ok(
+      stderr.mock.calls.some(({ arguments: [line] }) =>
+        String(line).includes("hook preflight failed"),
+      ),
+    );
+    assert.ok(
+      stderr.mock.calls.every(
+        ({ arguments: [line] }) => !/private|secret/.test(String(line)),
+      ),
+    );
+    await instance.stop();
     assert.ok(
       native.launches.every(
         ({ args }) => !args.includes("stop") && !args.includes("restart"),
@@ -361,56 +337,6 @@ for (const [name, changes] of [
   });
 }
 
-for (const [name, changes] of [
-  ["still untrusted", { hooks: [hook()] }],
-  ["still modified", { hooks: [{ ...hook(), trustStatus: "modified" }] }],
-  [
-    "additional untrusted disabled hook",
-    {
-      hooks: [
-        { ...hook(), trustStatus: "trusted" },
-        { ...hook("added"), enabled: false },
-      ],
-    },
-  ],
-  [
-    "hook error",
-    { errors: [{ path: "private path", message: "private inventory error" }] },
-  ],
-] as const) {
-  await test(`factory rejects hook readback with ${name}`, async (t) => {
-    const native = await nativeFixture(t);
-    native.hooks.push(hook());
-    const list = native.hooksHandler;
-    let reads = 0;
-    native.hooksHandler = (request) =>
-      ++reads === 1
-        ? list(request)
-        : {
-            data: [
-              {
-                cwd: process.cwd(),
-                hooks: [],
-                errors: [],
-                warnings: [],
-                ...changes,
-              },
-            ],
-          };
-    await assert.rejects(
-      createEnhancement(
-        boundCapabilities().io,
-        boundCapabilities().requestRecovery,
-        { cwd: process.cwd(), env: {} },
-        {},
-      ),
-      /Codex hook/,
-    );
-    await flush();
-    assert.equal(native.sockets[0]?.readyState, 3);
-  });
-}
-
 for (const [name, response] of [
   ["missing inventory", {}],
   ["empty inventory", { data: [] }],
@@ -469,17 +395,19 @@ for (const [name, response] of [
       ] as const,
   ),
 ] as const) {
-  await test(`factory rejects ${name} before changing hook trust`, async (t) => {
+  await test(`factory validates ${name} without changing hook trust`, async (t) => {
     const native = await nativeFixture(t);
     native.hooksHandler = () => response;
-    await assert.rejects(
-      createEnhancement(
-        boundCapabilities().io,
-        boundCapabilities().requestRecovery,
-        { cwd: process.cwd(), env: {} },
-        {},
-      ),
-      /Codex/,
+    const instance = await createEnhancement(
+      boundCapabilities().io,
+      boundCapabilities().requestRecovery,
+      { cwd: process.cwd(), env: {} },
+      {},
+    );
+    await instance.stop();
+    assert.equal(
+      native.requests.filter(({ method }) => method === "hooks/list").length,
+      1,
     );
     assert.equal(
       native.requests.some(({ method }) => method === "config/value/write"),

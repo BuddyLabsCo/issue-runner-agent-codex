@@ -122,14 +122,14 @@ await test("ordinary Host errors remain diagnosable without failing cleanup", as
   }
 });
 
-await test("observation and file-read errors propagate without being retried as business turns", async (t) => {
+await test("observation and file-read errors skip recovery without latching failure", async (t) => {
   for (const source of ["read", "file"]) {
     await t.test(source, async (t) => {
       const native = await nativeFixture(t);
       const bound = boundCapabilities();
       const stderr: string[] = [];
       t.mock.method(process.stderr, "write", (value: string) => {
-        if (value.startsWith("[codex]")) stderr.push(value);
+        if (value.startsWith("[codex] ")) stderr.push(value);
         return true;
       });
       native.handler = () => ({ thread: failedThread() });
@@ -155,15 +155,19 @@ await test("observation and file-read errors propagate without being retried as 
       else t.mock.method(fs, "access", () => Promise.reject(failure));
       t.mock.timers.tick(10_000);
       await flush();
-      t.mock.timers.tick(1_000_000);
-      await flush();
+      for (let i = 0; i < 2; i++) {
+        t.mock.timers.tick(1_000);
+        await flush();
+      }
       assert.equal(bound.recoveries, 0);
       assert.deepEqual(stderr, [
         "[codex] sessionref=known recovery operation failed\n",
       ]);
-      await assert.rejects(
-        instance.waitUntilReady(),
-        source === "read" ? /RPC request failed/ : (error) => error === failure,
+      assert.doesNotThrow(() =>
+        instance.onAssignment({
+          id: "next",
+          expectedFile: "next.json",
+        }),
       );
       await instance.stop();
       await instance.stop();

@@ -14,7 +14,7 @@ await test("observation retries every ten seconds without a business budget or d
   const bound = boundCapabilities();
   const stderr: string[] = [];
   t.mock.method(process.stderr, "write", (value: string) => {
-    if (value.startsWith("[codex]")) stderr.push(value);
+    if (value.startsWith("[codex] ")) stderr.push(value);
     return true;
   });
   const instance = await createEnhancement(
@@ -148,7 +148,7 @@ await test("transport loss during reattachment prints one reconnect failure and 
     failed = resolve;
   });
   t.mock.method(process.stderr, "write", (value: string) => {
-    if (value.startsWith("[codex]")) stderr.push(value);
+    if (value.startsWith("[codex] ")) stderr.push(value);
     if (value.includes("reconnect failed")) failed();
     return true;
   });
@@ -239,7 +239,7 @@ await test("failed subscription or snapshot refresh retries after ten seconds wi
         failed = resolve;
       });
       t.mock.method(process.stderr, "write", (value: string) => {
-        if (value.startsWith("[codex]")) stderr.push(value);
+        if (value.startsWith("[codex] ")) stderr.push(value);
         if (value.includes("reconnect failed")) failed();
         return true;
       });
@@ -256,7 +256,10 @@ await test("failed subscription or snapshot refresh retries after ten seconds wi
       await flush();
       const reading = new Promise<void>((received) => {
         native.handler = (request) => {
-          if (request.method === stage) throw new Error("private payload");
+          if (request.method === stage) {
+            received();
+            throw new Error("private payload");
+          }
           if (request.method === "thread/read") {
             received();
             if (stage === "invalid-snapshot")
@@ -269,7 +272,21 @@ await test("failed subscription or snapshot refresh retries after ten seconds wi
       t.mock.timers.tick(10_000);
       if (stage === "timeout") {
         await reading;
-        t.mock.timers.tick(10_000);
+        for (let attempt = 0; attempt < 3; attempt++) {
+          t.mock.timers.tick(10_000);
+          await flush();
+          if (attempt < 2) {
+            t.mock.timers.tick(1_000);
+            await flush();
+          }
+        }
+      } else if (stage === "thread/read") {
+        await reading;
+        await flush();
+        for (let attempt = 0; attempt < 2; attempt++) {
+          t.mock.timers.tick(1_000);
+          await flush();
+        }
       }
       await failure;
       await assert.rejects(instance.waitUntilReady(), /unavailable/);

@@ -186,17 +186,23 @@ await test("matching notifications cannot hide a failed subscription or initial 
       ]),
     });
     let fail!: () => void;
+    let failedOnce = false;
     let reads = 0;
     const pending = new Promise<void>((received) => {
       native.handler = (request) => {
         if (request.method === "thread/loaded/list") return { data: ["found"] };
         if (request.method === "thread/read" && ++reads === 1)
           return snapshot();
-        if (request.method === failingMethod)
+        if (request.method === failingMethod) {
+          if (failedOnce) throw new Error("binding failed");
           return new Promise((_resolve, reject) => {
-            fail = () => reject(new Error("binding failed"));
+            fail = () => {
+              failedOnce = true;
+              reject(new Error("binding failed"));
+            };
             received();
           });
+        }
         return {};
       };
     });

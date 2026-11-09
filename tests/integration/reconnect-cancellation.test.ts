@@ -63,7 +63,7 @@ await test("stop cancels each in-flight reattachment stage and ignores late resp
       const bound = boundCapabilities();
       const stderr: string[] = [];
       t.mock.method(process.stderr, "write", (value: string) => {
-        if (value.startsWith("[codex]")) stderr.push(value);
+        if (value.startsWith("[codex] ")) stderr.push(value);
         return true;
       });
       const instance = await createEnhancement(

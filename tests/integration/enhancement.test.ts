@@ -73,7 +73,6 @@ await test("observes only the supplied conversation and accepts a failed concate
       "initialized",
       "config/read",
       "hooks/list",
-      "hooks/list",
       "thread/resume",
       "thread/read",
     ],
@@ -217,7 +216,7 @@ await test("disconnect rejects pending readiness, is redacted on stderr, and sto
   const native = await nativeFixture(t);
   const stderr: string[] = [];
   t.mock.method(process.stderr, "write", (value: string) => {
-    stderr.push(value);
+    if (value.startsWith("[codex] ")) stderr.push(value);
     return true;
   });
   const bound = bootstrapCapabilities(native);

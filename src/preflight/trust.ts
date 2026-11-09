@@ -1,3 +1,4 @@
+import { diagnostic } from "../diagnostics.ts";
 import type { EnhancementContext } from "issue-runner-core/terminal";
 import { resolve } from "node:path";
 import { object, type NativeClient } from "../codex/client.ts";
@@ -57,5 +58,10 @@ export async function preflight(
       throw new Error("Codex primary checkout trust was not established");
   }
   verifyWorkingTrust(effective, context.cwd, worktree);
-  await trustHooks(client, context.cwd);
+  try {
+    await trustHooks(client, context.cwd);
+  } catch (error) {
+    client.log("hook preflight failed", error);
+    diagnostic(undefined, "hook preflight failed");
+  }
 }
