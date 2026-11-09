@@ -4,6 +4,7 @@ import { test } from "node:test";
 import { createEnhancement } from "../../src/index.ts";
 import {
   bootstrapCapabilities,
+  completeShellTurn,
   flush,
   nativeFixture,
 } from "../fixtures/native.ts";
@@ -18,17 +19,11 @@ await test("after readiness monitoring and cleanup failures leave contract calls
     { cwd: process.cwd(), env: {} },
     {},
   );
+  t.after(() => instance.stop());
   await instance.startMonitoring("known");
   const ready = instance.waitUntilReady();
   await flush();
-  native.notify("item/completed", {
-    threadId: "known",
-    item: {
-      type: "commandExecution",
-      source: "userShell",
-      command: bound.inputs[0]!.slice(1),
-    },
-  });
+  completeShellTurn(native, bound.inputs[0]!.slice(1));
   assert.equal(await ready, "known");
   await instance.startMonitoring("different");
   instance.onAssignment({ id: "next", expectedFile: "handoff.json" });
@@ -62,14 +57,7 @@ for (const source of ["file", "read"]) {
     await instance.startMonitoring("known");
     const ready = instance.waitUntilReady();
     await flush();
-    native.notify("item/completed", {
-      threadId: "known",
-      item: {
-        type: "commandExecution",
-        source: "userShell",
-        command: bound.inputs[0]!.slice(1),
-      },
-    });
+    completeShellTurn(native, bound.inputs[0]!.slice(1));
     assert.equal(await ready, "known");
     const snapshot = failedThread();
     native.handler = () => ({ thread: snapshot });
@@ -136,14 +124,7 @@ await test("stop stays bounded after readiness while a recovery callback is stil
   await instance.startMonitoring("known");
   const ready = instance.waitUntilReady();
   await flush();
-  native.notify("item/completed", {
-    threadId: "known",
-    item: {
-      type: "commandExecution",
-      source: "userShell",
-      command: bound.inputs[0]!.slice(1),
-    },
-  });
+  completeShellTurn(native, bound.inputs[0]!.slice(1));
   assert.equal(await ready, "known");
   t.mock.method(fs, "access", () =>
     Promise.reject(Object.assign(new Error("absent"), { code: "ENOENT" })),
@@ -190,14 +171,7 @@ await test("recovery-prompt delivery failure still propagates after readiness", 
   await instance.startMonitoring("known");
   const ready = instance.waitUntilReady();
   await flush();
-  native.notify("item/completed", {
-    threadId: "known",
-    item: {
-      type: "commandExecution",
-      source: "userShell",
-      command: bound.inputs[0]!.slice(1),
-    },
-  });
+  completeShellTurn(native, bound.inputs[0]!.slice(1));
   assert.equal(await ready, "known");
   t.mock.method(fs, "access", () =>
     Promise.reject(Object.assign(new Error("absent"), { code: "ENOENT" })),
