@@ -22,15 +22,9 @@ See [template comments](https://github.com/BuddyLabsCo/issue-runner-core/blob/ma
 
 ## Runtime notices and troubleshooting
 
-One Runner CLI invocation shares a JSONL log sequence across its Codex enhancements. Stopping or replacing a Tab and reconnecting preserve that sequence. A new CLI invocation, including restart/resume, starts a separate sequence.
+One Runner CLI invocation shares a JSONL log sequence across its Codex enhancements.  
 
-The first enhancement selects the directory with `resolve(cwd, "..", "..", "..", "logs")`. The supported layout `<project>/worktrees/<run>/<ticket>` therefore writes to `<project>/logs`; this calculation does not discover the project root. Files use `agent-codex-log-<UTC timestamp>.jsonl`, with filename-safe millisecond timestamps and exclusive creation to avoid collisions. No logfile path notice is printed.
-
-Set `terminalPlugins.enhancements.logLevel` to `info` or `error` (default). `error` records failures, including invalid configuration. `info` also records enhancement-owned operation attempts and planned waits, including cancellations and timeouts. Successful response and terminal screen bodies are excluded. Ordinary daemon/proxy stderr and configuration warnings are info events. Original error details, stacks, causes, and info-level stderr remain unredacted.
-
-Every record has `time`, `level`, `event`, a generated invocation `runId`, a stable enhancement `instanceId`, and its `cwd`. Known `sessionref`, `assignmentId`, and `turnId` fields identify the originating context, including delayed operations. The logging `runId` is independent of Core's persistent Run identity.
-
-Before an append would exceed 2 MiB (2,097,152 UTF-8 bytes), the shared sink rotates the nonempty file. Records remain complete; a single larger record occupies an oversized file. All old files remain, so cumulative disk use is unbounded. Log creation or write failures report a diagnostic and do not interrupt Runner.
+Set `terminalPlugins.enhancements.logLevel` to `info` or `error` (default). `error` records failures, including invalid configuration. `info` also records enhancement-owned operation attempts and planned waits, including cancellations and timeouts. 
 
 Enhancement notices use inherited Runner stderr and include `[codex] sessionref=<ref>` (`unbound` before identification):
 
