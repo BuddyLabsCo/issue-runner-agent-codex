@@ -34,20 +34,6 @@ Requests use numeric IDs and bounded waits. Only `hooks/list`, `config/read`, `t
 
 After binding, notifications must match the exact `threadId`; error evidence must also match the latest turn. The enhancement sends no native business-turn, interrupt, unsubscribe or daemon-stop requests. Full-history `thread/read` is deprecated for paginated threads; native-version changes may require migration. Protocol shapes were checked against the generated 0.166.0 schema; [native readiness evidence](https://github.com/BuddyLabsCo/issue-runner-agent-codex/issues/29) records the model-start persistence probe.
 
-## Enhancement logging
-
-All enhancement instances in one CLI process synchronously append to the same active JSONL file. The first instance selects `resolve(cwd, "..", "..", "..", "logs")`: `<project>/worktrees/<run>/<ticket>` maps to `<project>/logs`. There is no project-root discovery. Reconnects and instance cleanup preserve the shared sink; another CLI process starts a new sequence.
-
-Files are named `agent-codex-log-<timestamp>.jsonl`. UTC timestamps include milliseconds and replace colons with hyphens. Exclusive creation advances the candidate timestamp on collisions. Appends count UTF-8 bytes and rotate a nonempty file before exceeding 2,097,152 bytes. Each JSONL record stays intact. A single oversized record may exceed the limit; the next record rotates. No files are deleted automatically.
-
-`terminalPlugins.enhancements.logLevel` accepts `error` (default) or `info`. Invalid configuration failures are logged before startup. Errors retain original details, stacks and causes without redaction, including failed attempts that later succeed. Normal exits, ordinary stderr and configuration warnings are info events.
-
-At info level, records identify daemon/proxy starts and owned cleanup, transport connections and reconnects, RPC attempts, Git queries, configuration/hook operations, expected-file checks, terminal submissions and Core recovery callback invocations. Request metadata describes initiation; successful response payloads, full terminal bodies and elapsed durations are excluded. The enhancement does not log Codex's internal tool, shell or network activity.
-
-Wait and deadline scheduling records include their reason, planned `delayMs` and `scheduledFor`. Execution, cancellation and timeout produce separate records. This covers recovery, reconnect, RPC retry, readiness retry and operation deadlines.
-
-Records include `time`, `level`, `event`, invocation `runId`, enhancement `instanceId` and `cwd`. Available `sessionref`, `assignmentId` and `turnId` fields retain the operation's originating context through asynchronous completion or cancellation. IDs stay stable through rotation; `runId` is generated for logging rather than supplied by Core. Logging failures remain nonfatal and keep their stderr diagnostics. The logfile path notice is removed; other terminal notices remain unchanged.
-
 ## Interaction sequences
 
 ### Connection and initialization
