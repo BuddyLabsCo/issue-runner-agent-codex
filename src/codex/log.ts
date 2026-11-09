@@ -60,7 +60,7 @@ function serialize(value: unknown): string {
 interface Instance {
   id: string;
   level: LogLevel;
-  context: () => LogContext;
+  context: (turnId?: string) => LogContext;
   storage: AsyncLocalStorage<LogContext>;
 }
 
@@ -79,12 +79,12 @@ export class Log {
     this.instance.level = level;
   }
 
-  set context(context: () => LogContext) {
+  set context(context: (turnId?: string) => LogContext) {
     this.instance.context = context;
   }
 
-  current(): LogContext {
-    return { ...this.instance.context() };
+  current(turnId?: string): LogContext {
+    return { ...this.instance.context(turnId) };
   }
 
   private snapshot(): LogContext {

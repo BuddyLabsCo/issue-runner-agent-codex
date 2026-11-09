@@ -49,12 +49,22 @@ await test("logging attribution across Assignment replacement", async (suite) =>
       const resumed = new Promise<void>((resolve) => {
         resumeStarted = resolve;
       });
+      const snapshot = thread();
+      const history = {
+        ...snapshot,
+        turns: [
+          {
+            ...snapshot.turns[0]!,
+            error: { message: "historical turn failure" },
+          },
+        ],
+      };
       native.handler = (request) => {
         if (request.method === "thread/resume") {
           resumeStarted();
           return resumeResult;
         }
-        return request.method === "thread/read" ? { thread: thread() } : {};
+        return request.method === "thread/read" ? { thread: history } : {};
       };
       const instance = await createEnhancement(
         bound.io,
@@ -88,16 +98,32 @@ await test("logging attribution across Assignment replacement", async (suite) =>
         assert.equal(attempt.sessionref, "known");
         assert.ok(!("turnId" in attempt));
       }
+      const historicalFailure = records().find(
+        (record) => record.event === "native turn error",
+      )!;
+      assert.ok(historicalFailure);
+      assert.ok(!("assignmentId" in historicalFailure));
+      native.notify("error", {
+        threadId: "known",
+        turnId: "turn-1",
+        message: "unattributed history",
+      });
+      await flush();
+      const historical = records().find(
+        (record) => record.detail?.message === "unattributed history",
+      )!;
+      assert.ok(historical);
+      assert.ok(!("assignmentId" in historical));
       await instance.stop();
     },
   );
   await suite.test(
-    "delayed same-session notifications omit an unknown originating Assignment",
+    "delayed notifications preserve known turn Assignments and omit unknown ones",
     async (t) => {
       const native = await nativeFixture(t);
       const bound = boundCapabilities();
       const snapshot = thread();
-      snapshot.turns[0]!.id = "turn-original";
+      snapshot.turns = [];
       native.snapshot = snapshot;
       const instance = await createEnhancement(
         bound.io,
@@ -111,10 +137,53 @@ await test("logging attribution across Assignment replacement", async (suite) =>
         expectedFile: "original.json",
       });
       await instance.startMonitoring("known");
+      native.notify("turn/started", {
+        threadId: "known",
+        turn: {
+          id: "turn-original",
+          status: "inProgress",
+          error: null,
+          items: [],
+        },
+      });
+      await flush();
       instance.onAssignment({
         id: "notification-replacement",
         expectedFile: "replacement.json",
       });
+      const replacementStart = records().length;
+      for (const method of ["error", "configWarning"]) {
+        native.notify(method, {
+          threadId: "known",
+          turnId: "turn-original",
+          message: "before replacement turn",
+        });
+      }
+      native.notify("turn/completed", {
+        threadId: "known",
+        turn: {
+          id: "turn-original",
+          status: "failed",
+          error: { message: "failure before replacement turn" },
+          items: [],
+        },
+      });
+      await flush();
+      const turnFailure = records()
+        .slice(replacementStart)
+        .find((record) => record.event === "native turn error")!;
+      assert.ok(turnFailure);
+      assert.equal(turnFailure.assignmentId, "notification-original");
+      assert.equal(turnFailure.turnId, "turn-original");
+      const beforeTurn = records()
+        .slice(replacementStart)
+        .filter((record) => record.event === "native service notification");
+      assert.equal(beforeTurn.length, 2);
+      for (const record of beforeTurn) {
+        assert.equal(record.assignmentId, "notification-original");
+        assert.equal(record.turnId, "turn-original");
+        assert.equal(record.sessionref, "known");
+      }
       native.notify("turn/started", {
         threadId: "known",
         turn: {

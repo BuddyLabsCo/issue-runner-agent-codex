@@ -50,6 +50,8 @@ export class Observation {
   assignmentVersion = 0;
   version = 0;
   private snapshotVersion = 0;
+  // Turn attribution survives replacement of the active Assignment.
+  private logTurn: { id: string; assignmentId: string | undefined } | undefined;
   private latestStatus: Record<string, unknown> | undefined;
   private binding: Promise<void> | undefined;
   private stopped = false;
@@ -64,9 +66,14 @@ export class Observation {
 
   constructor(client: NativeClient) {
     this.client = client;
-    client.log.context = () => ({
+    client.log.context = (turnId) => ({
       sessionref: this.sessionref,
-      assignmentId: this.assignment?.id,
+      assignmentId:
+        turnId === undefined
+          ? this.assignment?.id
+          : this.logTurn?.id === turnId
+            ? this.logTurn.assignmentId
+            : undefined,
       turnId: this.thread?.turns.at(-1)?.id,
     });
     this.notification = (notification: Notification) =>
@@ -194,7 +201,6 @@ export class Observation {
   async refresh(): Promise<void> {
     const ref = this.sessionref;
     if (!ref || this.stopped || !this.client.available) return;
-    const log = this.client.log.capture();
     const version = this.snapshotVersion;
     const status = this.latestStatus;
     const result = threadState(
@@ -212,11 +218,16 @@ export class Observation {
       return;
     if (this.latestStatus && status !== this.latestStatus)
       result.status = this.latestStatus;
-    if (this.thread?.turns.at(-1)?.id !== result.turns.at(-1)?.id)
+    if (this.thread?.turns.at(-1)?.id !== result.turns.at(-1)?.id) {
       this.willRetry = undefined;
+      // History alone does not establish which Assignment started a turn.
+      this.logTurn = undefined;
+    }
     for (const turn of result.turns)
       if (turn.error)
-        log.capture({ turnId: turn.id }).error("native turn error", turn.error);
+        this.client.log
+          .capture({ ...this.client.log.current(turn.id), turnId: turn.id })
+          .error("native turn error", turn.error);
     this.thread = result;
     for (const listener of this.changes) listener();
   }
@@ -268,7 +279,9 @@ export class Observation {
       if (turn.error)
         this.client.log
           .capture({
-            ...this.client.log.current(),
+            ...this.client.log.current(
+              typeof turn.id === "string" ? turn.id : undefined,
+            ),
             turnId: typeof turn.id === "string" ? turn.id : undefined,
           })
           .error("native turn error", turn.error);
@@ -279,6 +292,12 @@ export class Observation {
       )
         return;
       const previous = this.thread?.turns.at(-1);
+      if (previous?.id !== turn.id)
+        this.logTurn = {
+          id: turn.id,
+          assignmentId:
+            method === "turn/started" ? this.assignment?.id : undefined,
+        };
       if (method === "turn/started" || previous?.id !== turn.id)
         this.willRetry = undefined;
       this.thread = {

@@ -190,7 +190,9 @@ export class NativeClient {
             message.method === "configWarning"
           ) {
             const { threadId, turnId } = notification.params;
-            const context = this.log.current();
+            const context = this.log.current(
+              typeof turnId === "string" ? turnId : undefined,
+            );
             if (
               typeof threadId === "string" &&
               threadId !== context.sessionref
