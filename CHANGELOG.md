@@ -1,14 +1,20 @@
 # Changelog
 
+## 1.0.2
+
+- - fix: [issue-58] preserve history across metadata notifications (#59)
+
 ## 1.0.1
 
 - - fix: [issue-55] complete shell turns in readiness tests (#56)
 - - fix: [issue-52] wait for GUID shell turn completion before bootstrap (#53)
 - - fix: [issue-50] contain enhancement failures and retain per-tab logs (#51)
 
+
 ## 1.0.0
 
 - - docs: [issue-38] consolidate Codex enhancement documentation (#48)
+
 
 
 ## 0.1.2
@@ -17,9 +23,11 @@
 
 
 
+
 ## 0.1.1
 
 - - chore: [issue-42] update Core dependency to 0.1.1 (#43)
+
 
 
 
