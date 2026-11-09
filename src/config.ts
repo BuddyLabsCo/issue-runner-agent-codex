@@ -1,4 +1,5 @@
 export interface Options {
+  logLevel: "info" | "error";
   readyTimeout: number;
   retryLimit: number;
   retryDelay: readonly number[];
@@ -11,11 +12,14 @@ export function parseOptions(config: unknown): Options {
   }
   const values: Record<string, unknown> = { ...config };
   const {
+    logLevel = "error",
     readyTimeout = 20,
     retryLimit = 3,
     retryDelay = [10, 20, 40],
     handoffRecoveryDelaySeconds = 120,
   } = values;
+  if (logLevel !== "info" && logLevel !== "error")
+    throw new TypeError("enhancements.logLevel must be info or error");
   const nonnegative = (value: unknown): value is number =>
     typeof value === "number" && Number.isFinite(value) && value >= 0;
   if (!nonnegative(readyTimeout) || readyTimeout === 0) {
@@ -45,6 +49,7 @@ export function parseOptions(config: unknown): Options {
     );
   }
   return {
+    logLevel,
     readyTimeout,
     retryLimit,
     retryDelay: delays,

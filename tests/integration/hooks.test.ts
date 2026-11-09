@@ -73,11 +73,7 @@ await test("factory refreshes changed hashes without enabling disabled hooks or 
       },
     ],
   );
-  assert.ok(
-    stderr.mock.calls.every(({ arguments: [line] }) =>
-      String(line).startsWith("[codex]: logfile:"),
-    ),
-  );
+  assert.equal(stderr.mock.callCount(), 0);
 });
 
 await test("factory queries already-trusted and managed hooks only once", async (t) => {

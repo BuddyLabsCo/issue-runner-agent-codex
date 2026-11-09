@@ -1,6 +1,12 @@
 import fs from "node:fs/promises";
 
-export async function expectedFileExists(path: string): Promise<boolean> {
+import type { Log } from "./log.ts";
+
+export async function expectedFileExists(
+  path: string,
+  log: Log,
+): Promise<boolean> {
+  log.info("expected-file check", { path });
   try {
     await fs.access(path);
     return true;

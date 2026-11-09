@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import fs from "node:fs";
 import { test, type TestContext } from "node:test";
 import { createEnhancement } from "../../src/index.ts";
 import {
@@ -30,6 +30,12 @@ async function assertReadyWithHookFailure(
     messages.push(message);
     return true;
   });
+  const lines: string[] = [];
+  const append = fs.appendFileSync;
+  t.mock.method(fs, "appendFileSync", (...args: Parameters<typeof append>) => {
+    lines.push(String(args[1]));
+    append(...args);
+  });
   const bound = bootstrapCapabilities(native);
   const instance = await createEnhancement(
     bound.io,
@@ -47,20 +53,13 @@ async function assertReadyWithHookFailure(
     messages.filter((message) => message.startsWith("[codex] ")),
     ["[codex] sessionref=unbound hook preflight failed\n"],
   );
-  const address = messages
-    .find((message) => message.startsWith("[codex]: logfile:"))!
-    .trim()
-    .slice("[codex]: logfile: ".length);
-  const records = (await readFile(address, "utf8"))
-    .trim()
-    .split("\n")
-    .map(
-      (line) =>
-        JSON.parse(line) as {
-          event: string;
-          detail: { message: string; cause?: unknown };
-        },
-    );
+  const records = lines.map(
+    (line) =>
+      JSON.parse(line) as {
+        event: string;
+        detail: { message: string; cause?: unknown };
+      },
+  );
   const failures = records.filter(
     (record) => record.event === "hook preflight failed",
   );

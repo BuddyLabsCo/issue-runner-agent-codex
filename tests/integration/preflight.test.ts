@@ -203,11 +203,7 @@ await test("structured trust preserves unusual path characters, project fields a
     assert.deepEqual(native.configuration, expected);
     await instance.stop();
   }
-  assert.ok(
-    stderr.mock.calls.every(({ arguments: [line] }) =>
-      String(line).startsWith("[codex]: logfile:"),
-    ),
-  );
+  assert.equal(stderr.mock.callCount(), 0);
   const writes = native.requests.filter(
     ({ method }) => method === "config/value/write",
   );
