@@ -58,7 +58,7 @@ export class Observation {
   private readonly connectionLost;
   private readonly markerItems: Record<string, unknown>[] = [];
 
-  private readonly client: NativeClient;
+  readonly client: NativeClient;
 
   constructor(client: NativeClient) {
     this.client = client;
@@ -99,7 +99,8 @@ export class Observation {
         this.available = true;
         this.invalidate();
       }
-    } catch {
+    } catch (error) {
+      this.client.log("observation reconnect failed", error);
       if (!this.stopped) {
         this.available = false;
         this.initialized = false;
@@ -195,6 +196,8 @@ export class Observation {
       result.status = this.latestStatus;
     if (this.thread?.turns.at(-1)?.id !== result.turns.at(-1)?.id)
       this.willRetry = undefined;
+    for (const turn of result.turns)
+      if (turn.error) this.client.log("native turn error", turn.error);
     this.thread = result;
     for (const listener of this.changes) listener();
   }
@@ -243,6 +246,7 @@ export class Observation {
     }
     if (method === "turn/started" || method === "turn/completed") {
       const turn = object(params.turn);
+      if (turn.error) this.client.log("native turn error", turn.error);
       if (
         typeof turn.id !== "string" ||
         typeof turn.status !== "string" ||

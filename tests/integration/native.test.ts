@@ -240,7 +240,7 @@ await test("daemon startup timeout survives failed starter release without stopp
       const bound = boundCapabilities();
       const stderr: string[] = [];
       t.mock.method(process.stderr, "write", (value: string) => {
-        if (value.startsWith("[codex]")) stderr.push(value);
+        if (value.startsWith("[codex] ")) stderr.push(value);
         return true;
       });
       let kills = 0;

@@ -30,7 +30,9 @@ The client sends the `initialized` notification after successful initialization.
 | `item/started`, `item/completed` | Observe `commandExecution` items with `source: "userShell"`, bootstrap `userMessage` evidence and complete `agentMessage` replies. |
 | `error` | Retain `willRetry` for the bound latest turn; suppress business recovery while native retry is active. |
 
-Requests use numeric IDs and bounded waits. After binding, notifications must match the exact `threadId`; error evidence must also match the latest turn. The enhancement sends no native business-turn, interrupt, unsubscribe or daemon-stop requests. Full-history `thread/read` is deprecated for paginated threads; native-version changes may require migration. Protocol shapes were checked against the generated 0.166.0 schema; [native readiness evidence](https://github.com/BuddyLabsCo/issue-runner-agent-codex/issues/29) records the model-start persistence probe.
+Requests use numeric IDs and bounded waits. Only `hooks/list`, `config/read`, `thread/read`, and `thread/loaded/list` retry timeouts or service errors: three attempts maximum, ten seconds per attempt, and one second between attempts. Retries use fresh IDs on the same connection; disconnect or stop cancels them. Successful-response validation failures and other methods never retry. Each failed attempt goes to the Tab log; intermediate retries add no terminal notice.
+
+After binding, notifications must match the exact `threadId`; error evidence must also match the latest turn. The enhancement sends no native business-turn, interrupt, unsubscribe or daemon-stop requests. Full-history `thread/read` is deprecated for paginated threads; native-version changes may require migration. Protocol shapes were checked against the generated 0.166.0 schema; [native readiness evidence](https://github.com/BuddyLabsCo/issue-runner-agent-codex/issues/29) records the model-start persistence probe.
 
 ## Interaction sequences
 
@@ -75,12 +77,12 @@ sequenceDiagram
     opt Untrusted or modified definitions exist
         E->>N: config/value/write (hooks.state, trusted_hash, upsert)
         N-->>E: Write result
+        E->>N: hooks/list (cwds)
+        N-->>E: Current definitions must be trusted or managed
     end
-    E->>N: hooks/list (cwds)
-    N-->>E: Current definitions must be trusted or managed
 ```
 
-Hook writes preserve enabled flags and unrelated state. Persisted trust survives later failure or cleanup. Failed preflight releases only the enhancement's connection and proxy.
+Hook writes preserve enabled flags and unrelated state. Persisted trust survives later failure or cleanup. Checkout trust failures release only the enhancement's connection and proxy. Hook preflight failures are logged and allow readiness to proceed. Trusted, managed, or empty inventories require only the first query.
 
 ### Conversation identification and readiness
 
@@ -157,7 +159,9 @@ Reconnect restores subscriptions and current facts without replaying events, res
 
 ### Stop and cleanup
 
-Stop disables activity immediately, waits for issued injected operations, and releases only owned resources. Native history, persisted settings, other sessions and the shared daemon survive.
+Stop disables activity immediately, waits for issued injected operations, and releases only owned resources. After connection and native readiness return the actual sessionid, enhancement operation and cleanup failures are logged without rejecting contract calls.
+
+Real terminal-input and recovery-prompt delivery failures retain their existing handling. Stop has a ten-second overall bound after readiness; unfinished releases remain retryable. Native history, persisted settings, other sessions and the shared daemon survive.
 
 ```mermaid
 sequenceDiagram

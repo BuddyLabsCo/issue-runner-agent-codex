@@ -5,7 +5,8 @@ export async function listHooks(client: NativeClient, cwd: string) {
   const response = await client
     .request("hooks/list", { cwds: [cwd] })
     .then(object)
-    .catch(() => {
+    .catch((error: unknown) => {
+      client.log("hook inventory failed", error);
       throw new Error("Codex hooks/list failed");
     });
   if (!Array.isArray(response.data) || response.data.length !== 1)

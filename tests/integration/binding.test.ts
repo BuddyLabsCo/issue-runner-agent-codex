@@ -71,11 +71,13 @@ await test("a status notification during binding preserves initial history and r
 await test("failed binding initialization can be retried for the same exact conversation", async (t) => {
   const native = await nativeFixture(t);
   for (const failingMethod of ["thread/resume", "thread/read"]) {
-    let failed = false;
+    let failures = 0;
     const requestStart = native.requests.length;
     native.handler = (request) => {
-      if (request.method === failingMethod && !failed) {
-        failed = true;
+      if (
+        request.method === failingMethod &&
+        failures++ < (failingMethod === "thread/read" ? 3 : 1)
+      ) {
         throw new Error("scripted binding failure");
       }
       return request.method.startsWith("thread/") ? { thread: thread() } : {};
@@ -106,6 +108,8 @@ await test("failed binding initialization can be retried for the same exact conv
             ]
           : [
               ["thread/resume", "known"],
+              ["thread/read", "known"],
+              ["thread/read", "known"],
               ["thread/read", "known"],
               ["thread/resume", "known"],
               ["thread/read", "known"],

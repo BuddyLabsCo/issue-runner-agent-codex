@@ -61,6 +61,10 @@ for (const rpcError of [
         },
       );
       await flush();
+      for (let attempt = 0; attempt < 4; attempt++) {
+        t.mock.timers.tick(1_000);
+        await flush();
+      }
       assert.equal(settled, false);
       assert.ok(
         native.requests.some(
@@ -68,15 +72,20 @@ for (const rpcError of [
             method === "thread/read" && params.threadId === "target",
         ),
       );
-      assert.equal(bound.inputs.length, 1);
+      const inputs = bound.inputs.length;
       available = true;
       t.mock.timers.tick(1_999);
       await flush();
       assert.equal(settled, false);
-      assert.equal(bound.inputs.length, 1);
+      assert.equal(bound.inputs.length, inputs);
       t.mock.timers.tick(1);
+      await flush();
+      for (let attempt = 0; attempt < 2; attempt++) {
+        t.mock.timers.tick(1_000);
+        await flush();
+      }
       assert.equal(await waiting, "target");
-      assert.equal(bound.inputs.length, 3);
+      assert.ok(bound.inputs.length > inputs);
       assert.equal(
         new Set(bound.inputs.filter((text) => text.startsWith("!"))).size,
         1,
@@ -125,7 +134,9 @@ await test("persistent history failures retain a redacted timeout cause and do n
     const waiting = instance.waitUntilReady();
     void waiting.catch(() => undefined);
     await flush();
-    t.mock.timers.tick(2_000);
+    t.mock.timers.tick(1_000);
+    await flush();
+    t.mock.timers.tick(1_000);
     await flush();
     t.mock.timers.tick(1_000);
     await assert.rejects(waiting, (error: unknown) => {

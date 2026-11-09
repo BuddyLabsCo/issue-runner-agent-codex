@@ -190,7 +190,7 @@ export class ErrorRecovery {
       if (!actionRequired) this.consider(candidate);
     } catch (error) {
       if (!current()) return;
-      this.failure = { error };
+      this.observation.client.log("recovery check failed", error);
       diagnostic(this.observation.sessionref, "recovery operation failed");
       this.cancel();
     }
@@ -234,6 +234,7 @@ export class ErrorRecovery {
           })
           .catch((error: unknown) => {
             this.failure = { error };
+            this.observation.client.log("recovery input failed", error);
             diagnostic(
               this.observation.sessionref,
               "recovery operation failed",
@@ -259,7 +260,10 @@ export class ErrorRecovery {
       present = await expectedFileExists(resolve(this.cwd, expectedFile));
     } catch (error) {
       if (this.pending !== pending) return true;
-      throw error;
+      this.cancel();
+      this.observation.client.log("recovery check failed", error);
+      diagnostic(this.observation.sessionref, "recovery operation failed");
+      return false;
     }
     if (this.pending !== pending) return true;
     this.cancel();

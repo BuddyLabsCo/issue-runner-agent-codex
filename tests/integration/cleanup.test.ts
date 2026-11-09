@@ -124,14 +124,18 @@ await test("initialization and preflight errors survive cleanup failure with a s
       const bound = boundCapabilities();
       const stderr: string[] = [];
       t.mock.method(process.stderr, "write", (value: string) => {
-        if (value.startsWith("[codex]")) stderr.push(value);
+        if (value.startsWith("[codex] ")) stderr.push(value);
         return true;
       });
+      let injectCleanup = true;
       const fail = () => {
-        const kill = t.mock.method(native.proxies[0]!, "kill");
-        kill.mock.mockImplementationOnce(() => {
-          throw new Error("private cleanup failure");
-        });
+        if (injectCleanup) {
+          injectCleanup = false;
+          const kill = t.mock.method(native.proxies[0]!, "kill");
+          kill.mock.mockImplementationOnce(() => {
+            throw new Error("private cleanup failure");
+          });
+        }
         throw new Error("private initialization failure");
       };
       if (stage === "initialize") native.handler = fail;

@@ -88,7 +88,7 @@ await test("missing-handoff file and Host failures propagate through the lifecyc
       });
       const stderr: string[] = [];
       t.mock.method(process.stderr, "write", (value: string) => {
-        if (value.startsWith("[codex]")) stderr.push(value);
+        if (value.startsWith("[codex] ")) stderr.push(value);
         return true;
       });
       native.handler = () => ({ thread: thread() });
@@ -122,10 +122,16 @@ await test("missing-handoff file and Host failures propagate through the lifecyc
       t.mock.timers.tick(100_000);
       await flush();
       assert.equal(bound.recoveries, source === "file" ? 0 : 1);
-      await assert.rejects(
-        instance.waitUntilReady(),
-        (error) => error === failure,
-      );
+      if (source === "host") {
+        await assert.rejects(
+          instance.waitUntilReady(),
+          (error) => error === failure,
+        );
+      } else {
+        assert.doesNotThrow(() =>
+          instance.onAssignment({ id: "next", expectedFile: "next.json" }),
+        );
+      }
       await instance.stop();
       await instance.stop();
       assert.ok(

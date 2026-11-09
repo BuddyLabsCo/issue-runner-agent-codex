@@ -18,7 +18,7 @@ export async function recoveryFixture(t: TestContext, config: unknown = {}) {
   const bound = boundCapabilities();
   const stderr: string[] = [];
   t.mock.method(process.stderr, "write", (value: string) => {
-    if (value.startsWith("[codex]")) stderr.push(value);
+    if (value.startsWith("[codex] ")) stderr.push(value);
     return true;
   });
   const state = { snapshot: failedThread() };

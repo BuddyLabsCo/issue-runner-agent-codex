@@ -293,7 +293,8 @@ export class Readiness {
   }
 
   async finish(): Promise<void> {
-    await this.round?.catch(() => {
+    await this.round?.catch((error: unknown) => {
+      this.client.log("readiness input failed", error);
       diagnostic(this.observation.sessionref, "readiness input failed");
     });
   }

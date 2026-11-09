@@ -11,15 +11,14 @@ export async function trustHooks(
     (hook) =>
       hook.trustStatus === "untrusted" || hook.trustStatus === "modified",
   );
-  if (pending.length !== 0) {
-    await upsertConfiguration(
-      client,
-      "hooks.state",
-      Object.fromEntries(
-        pending.map((hook) => [hook.key, { trusted_hash: hook.currentHash }]),
-      ),
-    );
-  }
+  if (pending.length === 0) return;
+  await upsertConfiguration(
+    client,
+    "hooks.state",
+    Object.fromEntries(
+      pending.map((hook) => [hook.key, { trusted_hash: hook.currentHash }]),
+    ),
+  );
   const verified = await listHooks(client, cwd);
   if (
     verified.some(
