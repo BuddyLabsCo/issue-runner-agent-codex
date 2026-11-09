@@ -3,6 +3,7 @@ import { test } from "node:test";
 import { createEnhancement } from "../../src/index.ts";
 import {
   bootstrapCapabilities,
+  completeShellTurn,
   flush,
   nativeFixture,
   thread,
@@ -105,14 +106,7 @@ await test("GUID detection stops rounds while delayed binding and its current-st
     t.mock.timers.tick(2_100);
     await flush();
     assert.equal(bound.inputs.length, 1);
-    native.notify("item/completed", {
-      threadId: "found",
-      item: {
-        type: "commandExecution",
-        source: "userShell",
-        command: bound.inputs[0]?.slice(1),
-      },
-    });
+    completeShellTurn(native, bound.inputs[0]!.slice(1), "found");
     await flush();
     assert.equal(ready, false);
     assert.equal(reads, 1);
@@ -217,14 +211,7 @@ await test("matching notifications cannot hide a failed subscription or initial 
         () => undefined,
       );
       await pending;
-      native.notify("item/completed", {
-        threadId: "found",
-        item: {
-          type: "commandExecution",
-          source: "userShell",
-          command: bound.inputs[0]?.slice(1),
-        },
-      });
+      completeShellTurn(native, bound.inputs[0]!.slice(1), "found");
       await flush();
       assert.equal(ready, false);
       fail();

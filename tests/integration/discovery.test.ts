@@ -4,6 +4,7 @@ import { createEnhancement } from "../../src/index.ts";
 import {
   boundCapabilities,
   bootstrapCapabilities,
+  completeShellTurn,
   flush,
   nativeFixture,
   thread,
@@ -192,14 +193,7 @@ await test("discovery notices evidence while a Host round is pending and waits f
     );
     await flush();
     loaded = true;
-    native.notify("item/completed", {
-      threadId: "pending-input",
-      item: {
-        type: "commandExecution",
-        source: "userShell",
-        command: bound.inputs[0]?.slice(1),
-      },
-    });
+    completeShellTurn(native, bound.inputs[0]!.slice(1), "pending-input");
     await flush();
     await flush();
     assert.ok(
@@ -376,14 +370,7 @@ await test("distinct Tabs discover their own GUIDs among the same loaded threads
     assert.equal(secondReady, false);
     await a.stop();
     secondMarker = true;
-    native.notify("item/completed", {
-      threadId: "second",
-      item: {
-        type: "commandExecution",
-        source: "userShell",
-        command: second.inputs[0]?.slice(1),
-      },
-    });
+    completeShellTurn(native, second.inputs[0]!.slice(1), "second");
     assert.equal(await br, "second");
     assert.equal(first.inputs.length, 2);
     assert.equal(second.inputs.length, 2);

@@ -3,6 +3,7 @@ import { test } from "node:test";
 import { createEnhancement } from "../../src/index.ts";
 import {
   boundCapabilities,
+  completeShellTurn,
   flush,
   nativeFixture,
   thread,
@@ -94,15 +95,7 @@ await test("a supplied GUID-only ref correlates an early start and later user in
   await instance.startMonitoring("known");
   const waiting = instance.waitUntilReady();
   await flush();
-  native.notify("item/completed", {
-    threadId: "known",
-    turnId: "shell",
-    item: {
-      type: "commandExecution",
-      source: "userShell",
-      command: bound.inputs[0]!.slice(1),
-    },
-  });
+  completeShellTurn(native, bound.inputs[0]!.slice(1));
   assert.equal(await waiting, "known");
   assert.equal(bound.inputs.length, 2);
   assert.equal(await instance.waitUntilReady(), "known");
@@ -130,15 +123,7 @@ await test("shell turns, stale starts and unrelated sessions or turn IDs cannot 
     threadId: "known",
     turn: { id: "shell", status: "inProgress", items: [] },
   });
-  native.notify("item/completed", {
-    threadId: "known",
-    turnId: "shell",
-    item: {
-      type: "commandExecution",
-      source: "userShell",
-      command: bound.inputs[0]!.slice(1),
-    },
-  });
+  completeShellTurn(native, bound.inputs[0]!.slice(1));
   await flush();
   const message = {
     type: "userMessage",
@@ -189,14 +174,7 @@ for (const status of ["failed", "interrupted"]) {
     await instance.startMonitoring("known");
     const waiting = instance.waitUntilReady();
     await flush();
-    native.notify("item/completed", {
-      threadId: "known",
-      item: {
-        type: "commandExecution",
-        source: "userShell",
-        command: bound.inputs[0]!.slice(1),
-      },
-    });
+    completeShellTurn(native, bound.inputs[0]!.slice(1));
     await flush();
     const turn = {
       id: "bootstrap",
@@ -244,14 +222,7 @@ await test("missing model start times out, retries with a new token and rejects 
   t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
   const timeout = assert.rejects(instance.waitUntilReady(), /timed out/);
   await flush();
-  native.notify("item/completed", {
-    threadId: "known",
-    item: {
-      type: "commandExecution",
-      source: "userShell",
-      command: bound.inputs[0]!.slice(1),
-    },
-  });
+  completeShellTurn(native, bound.inputs[0]!.slice(1));
   await flush();
   assert.equal(bound.inputs.length, 2);
   t.mock.timers.tick(3_000);
@@ -299,14 +270,7 @@ await test("stop cancels bootstrap input queued after GUID detection", async (t)
   await instance.startMonitoring("known");
   const waiting = assert.rejects(instance.waitUntilReady(), /stopped/);
   await flush();
-  native.notify("item/completed", {
-    threadId: "known",
-    item: {
-      type: "commandExecution",
-      source: "userShell",
-      command: bound.inputs[0]!.slice(1),
-    },
-  });
+  completeShellTurn(native, bound.inputs[0]!.slice(1));
   const stopping = instance.stop();
   await stopping;
   await waiting;
