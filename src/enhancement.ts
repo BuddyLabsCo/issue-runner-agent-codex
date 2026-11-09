@@ -60,7 +60,7 @@ function assemble(
         if (sessionref !== undefined) {
           if (!sessionref.trim())
             throw new TypeError("Codex sessionref must not be empty");
-          await observation.bind(sessionref);
+          await log.run(() => observation.bind(sessionref));
         }
       } catch (error) {
         log.error("monitoring operation failed", error);

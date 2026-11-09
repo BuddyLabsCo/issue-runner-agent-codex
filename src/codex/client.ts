@@ -199,7 +199,10 @@ export class NativeClient {
               context.assignmentId = undefined;
               context.turnId = undefined;
             }
-            if (typeof turnId === "string") context.turnId = turnId;
+            if (typeof turnId === "string") {
+              if (turnId !== context.turnId) context.assignmentId = undefined;
+              context.turnId = turnId;
+            }
             const log = this.log.capture(context);
             log[message.method === "error" ? "error" : "info"](
               "native service notification",

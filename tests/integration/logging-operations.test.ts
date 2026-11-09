@@ -449,11 +449,22 @@ await test("operation logging through enhancement lifecycle", async (suite) => {
       t.mock.timers.tick(2_000);
       await waiting;
       const emitted = records().slice(start);
-      for (const record of emitted.filter(
+      const logged = emitted.filter(
         (record) =>
           record.event.startsWith("readiness retry wait") ||
           record.event.startsWith("terminal submit"),
-      )) {
+      );
+      assert.deepEqual(
+        logged.map((record) => [record.event, record.level]),
+        [
+          ["terminal submit", "info"],
+          ["readiness retry wait scheduled", "info"],
+          ["readiness retry wait started", "info"],
+          ["terminal submit", "info"],
+          ["terminal submit failed", "error"],
+        ],
+      );
+      for (const record of logged) {
         assert.equal(record.assignmentId, "readiness-original");
         assert.equal(record.turnId, "turn-1");
       }

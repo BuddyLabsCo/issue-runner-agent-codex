@@ -244,17 +244,27 @@ await test("process logging", async (suite) => {
     "an unavailable stderr cannot turn log failure into a lifecycle failure",
     async (t) => {
       await nativeFixture(t);
-      t.mock.method(process.stderr, "write", () => {
+      const stderr = t.mock.method(process.stderr, "write", () => {
         throw new Error("stderr unavailable");
+      });
+      const append = t.mock.method(fs, "appendFileSync", () => {
+        throw new Error("disk unavailable");
       });
       const bound = boundCapabilities();
       const instance = await createEnhancement(
         bound.io,
         bound.requestRecovery,
         { cwd: process.cwd(), env: {} },
-        {},
+        { logLevel: "info" },
       );
       await instance.stop();
+      assert.ok(append.mock.callCount() > 0);
+      assert.ok(
+        stderr.mock.calls.some(
+          ({ arguments: [message] }) =>
+            String(message) === "[codex] sessionref=unbound log write failed\n",
+        ),
+      );
     },
   );
   await suite.test(
