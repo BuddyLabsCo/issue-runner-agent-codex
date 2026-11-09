@@ -1,5 +1,6 @@
 import type { Enhancement } from "issue-runner-core/terminal";
 import { NativeClient, object, type Notification } from "../codex/client.ts";
+import type { ScheduledLog } from "../codex/log.ts";
 import { diagnostic } from "../diagnostics.ts";
 
 export interface NativeTurn {
@@ -53,6 +54,7 @@ export class Observation {
   private binding: Promise<void> | undefined;
   private stopped = false;
   private reconnecting = false;
+  private reconnectWait: ScheduledLog | undefined;
   private reconnectTimer: ReturnType<typeof setTimeout> | undefined;
   private readonly notification;
   private readonly connectionLost;
@@ -62,27 +64,42 @@ export class Observation {
 
   constructor(client: NativeClient) {
     this.client = client;
+    client.log.context = () => ({
+      sessionref: this.sessionref,
+      assignmentId: this.assignment?.id,
+      turnId: this.thread?.turns.at(-1)?.id,
+    });
     this.notification = (notification: Notification) =>
-      this.observe(notification);
-    this.connectionLost = () => {
-      if (this.stopped || !this.available) return;
-      this.available = false;
-      this.initialized = false;
-      this.binding = undefined;
-      this.willRetry = undefined;
-      this.invalidate();
-      diagnostic(this.sessionref, "observation disconnected");
-      this.scheduleReconnect();
-    };
+      client.log
+        .capture(client.log.current())
+        .run(() => this.observe(notification));
+    this.connectionLost = () =>
+      client.log.capture(client.log.current()).run(() => {
+        if (this.stopped || !this.available) return;
+        this.available = false;
+        this.initialized = false;
+        this.binding = undefined;
+        this.willRetry = undefined;
+        this.invalidate();
+        diagnostic(this.sessionref, "observation disconnected");
+        this.scheduleReconnect();
+      });
     client.notifications.add(this.notification);
     client.disconnections.add(this.connectionLost);
   }
 
   private scheduleReconnect(): void {
     if (this.stopped || this.reconnecting || this.reconnectTimer) return;
+    const log = this.client.log.capture();
+    this.reconnectWait = log.schedule(
+      "reconnect wait",
+      10_000,
+      "observation disconnected",
+    );
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = undefined;
-      void this.reconnect();
+      this.reconnectWait?.("started");
+      void log.run(() => this.reconnect());
     }, 10_000);
   }
 
@@ -100,7 +117,7 @@ export class Observation {
         this.invalidate();
       }
     } catch (error) {
-      this.client.log("observation reconnect failed", error);
+      this.client.log.error("observation reconnect failed", error);
       if (!this.stopped) {
         this.available = false;
         this.initialized = false;
@@ -177,6 +194,7 @@ export class Observation {
   async refresh(): Promise<void> {
     const ref = this.sessionref;
     if (!ref || this.stopped || !this.client.available) return;
+    const log = this.client.log.capture();
     const version = this.snapshotVersion;
     const status = this.latestStatus;
     const result = threadState(
@@ -197,7 +215,8 @@ export class Observation {
     if (this.thread?.turns.at(-1)?.id !== result.turns.at(-1)?.id)
       this.willRetry = undefined;
     for (const turn of result.turns)
-      if (turn.error) this.client.log("native turn error", turn.error);
+      if (turn.error)
+        log.capture({ turnId: turn.id }).error("native turn error", turn.error);
     this.thread = result;
     for (const listener of this.changes) listener();
   }
@@ -246,7 +265,13 @@ export class Observation {
     }
     if (method === "turn/started" || method === "turn/completed") {
       const turn = object(params.turn);
-      if (turn.error) this.client.log("native turn error", turn.error);
+      if (turn.error)
+        this.client.log
+          .capture({
+            ...this.client.log.current(),
+            turnId: typeof turn.id === "string" ? turn.id : undefined,
+          })
+          .error("native turn error", turn.error);
       if (
         typeof turn.id !== "string" ||
         typeof turn.status !== "string" ||
@@ -291,6 +316,7 @@ export class Observation {
   stop(): void {
     this.stopped = true;
     clearTimeout(this.reconnectTimer);
+    this.reconnectWait?.("cancelled");
     this.available = false;
     this.initialized = false;
     this.invalidate();

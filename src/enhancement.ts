@@ -11,7 +11,7 @@ import { Observation } from "./monitor/state.ts";
 import { Readiness } from "./session/ready.ts";
 import { ErrorRecovery } from "./recovery/error.ts";
 import { preflight } from "./preflight/trust.ts";
-import { createLog } from "./codex/log.ts";
+import { createLog, type ScheduledLog } from "./codex/log.ts";
 import { diagnostic } from "./diagnostics.ts";
 
 function assemble(
@@ -47,12 +47,15 @@ function assemble(
     return true;
   };
   const failed = (event: string, error: unknown) => {
-    client.log(event, error);
+    client.log.error(event, error);
     diagnostic(observation.sessionref, event);
   };
   return {
     async startMonitoring(sessionref) {
       if (!active()) return;
+      const log = client.log.capture({
+        sessionref: sessionref ?? observation.sessionref,
+      });
       try {
         if (sessionref !== undefined) {
           if (!sessionref.trim())
@@ -60,18 +63,20 @@ function assemble(
           await observation.bind(sessionref);
         }
       } catch (error) {
-        failed("monitoring operation failed", error);
+        log.error("monitoring operation failed", error);
+        diagnostic(observation.sessionref, "monitoring operation failed");
         if (!sessionid) throw error;
       }
     },
     async waitUntilReady() {
       active();
       if (sessionid) return sessionid;
+      const log = client.log.capture();
       try {
         sessionid = await readiness.wait();
         return sessionid;
       } catch (error) {
-        client.log("readiness failed", error);
+        log.error("readiness failed", error);
         throw error;
       }
     },
@@ -92,25 +97,36 @@ function assemble(
       observation.stop();
       const input = Promise.all([readiness.finish(), recovery.finish()]);
       const closing = client.close().finally(() => input);
+      const cleanupLog = client.log.capture();
+      let deadline: ScheduledLog | undefined;
       let timer: ReturnType<typeof setTimeout> | undefined;
       const bounded = sessionid
         ? Promise.race([
             closing,
             new Promise<never>((_resolve, reject) => {
-              timer = setTimeout(
-                () => reject(new Error("Codex cleanup timed out")),
+              deadline = cleanupLog.schedule(
+                "cleanup deadline",
                 10_000,
+                "bounded cleanup after readiness",
               );
+              timer = setTimeout(() => {
+                deadline?.("timed out");
+                reject(new Error("Codex cleanup timed out"));
+              }, 10_000);
             }),
           ])
         : closing;
       stopping = bounded
         .catch((error: unknown) => {
           stopping = undefined;
-          failed("cleanup operation failed", error);
+          cleanupLog.error("cleanup operation failed", error);
+          diagnostic(observation.sessionref, "cleanup operation failed");
           if (!sessionid) throw error;
         })
-        .finally(() => clearTimeout(timer));
+        .finally(() => {
+          clearTimeout(timer);
+          deadline?.("cancelled");
+        });
       return stopping;
     },
   };
@@ -126,8 +142,9 @@ export async function createEnhancement(
   let options: Options;
   try {
     options = parseOptions(config);
+    log.level = options.logLevel;
   } catch (error) {
-    log("configuration validation failed", error);
+    log.error("configuration validation failed", error);
     throw error;
   }
   const client = await connectNative(context, log);
@@ -135,9 +152,9 @@ export async function createEnhancement(
     await preflight(client, context);
     return assemble(io, requestRecovery, client, options, context.cwd);
   } catch (error) {
-    client.log("preflight failed", error);
+    client.log.error("preflight failed", error);
     await client.close().catch((error: unknown) => {
-      client.log("initialization cleanup failed", error);
+      client.log.error("initialization cleanup failed", error);
       diagnostic(undefined, "initialization cleanup failed");
     });
     throw error;

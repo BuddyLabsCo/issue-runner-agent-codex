@@ -6,7 +6,7 @@ export async function listHooks(client: NativeClient, cwd: string) {
     .request("hooks/list", { cwds: [cwd] })
     .then(object)
     .catch((error: unknown) => {
-      client.log("hook inventory failed", error);
+      client.log.error("hook inventory failed", error);
       throw new Error("Codex hooks/list failed");
     });
   if (!Array.isArray(response.data) || response.data.length !== 1)

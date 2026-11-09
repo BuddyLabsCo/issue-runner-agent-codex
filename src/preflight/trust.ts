@@ -46,7 +46,7 @@ export async function preflight(
   client: NativeClient,
   context: EnhancementContext,
 ): Promise<void> {
-  const { primary, worktree } = await primaryCheckout(context);
+  const { primary, worktree } = await primaryCheckout(context, client.log);
   const initial = await readConfiguration(client, context.cwd);
   let effective = initial;
   if (!trusted(initial, primary)) {
@@ -61,7 +61,7 @@ export async function preflight(
   try {
     await trustHooks(client, context.cwd);
   } catch (error) {
-    client.log("hook preflight failed", error);
+    client.log.error("hook preflight failed", error);
     diagnostic(undefined, "hook preflight failed");
   }
 }

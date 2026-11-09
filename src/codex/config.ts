@@ -8,7 +8,7 @@ export async function readConfiguration(client: NativeClient, cwd: string) {
     object(response.config);
     return response;
   } catch (error) {
-    client.log("configuration operation failed", error);
+    client.log.error("configuration operation failed", error);
     throw new Error("Codex config/read failed", { cause: error });
   }
 }
@@ -30,7 +30,7 @@ export async function upsertConfiguration(
       throw new Error("Invalid Codex configuration write status");
     return written;
   } catch (error) {
-    client.log("configuration operation failed", error);
+    client.log.error("configuration operation failed", error);
     throw new Error(`Codex config/value/write failed for ${keyPath}`, {
       cause: error,
     });

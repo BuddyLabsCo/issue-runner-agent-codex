@@ -1,3 +1,4 @@
+import type { Log, ScheduledLog } from "../codex/log.ts";
 import { randomUUID } from "node:crypto";
 import type { TerminalIO } from "issue-runner-core/terminal";
 import {
@@ -23,6 +24,7 @@ function containsMarker(
 
 export class Readiness {
   private round: Promise<void> | undefined;
+  private inputLog: Log | undefined;
   private discovery: Promise<void> | undefined;
   private discoveryFailure: { cause: unknown } | undefined;
   private readonly cancellations = new Set<() => void>();
@@ -69,12 +71,17 @@ export class Readiness {
     return new Promise((resolve, reject) => {
       let settled = false;
       let detected = false;
+      const log = this.client.log.capture();
+      let retryWait: ScheduledLog | undefined;
+      let deadlineWait: ScheduledLog | undefined;
       let next: ReturnType<typeof setTimeout> | undefined;
       const finish = (...errors: [] | [unknown]) => {
         if (settled) return;
         settled = true;
         clearTimeout(deadline);
+        deadlineWait?.("cancelled");
         clearTimeout(next);
+        retryWait?.("cancelled");
         this.observation.changes.delete(changed);
         this.client.notifications.delete(modelStarted);
         this.cancellations.delete(cancel);
@@ -100,6 +107,7 @@ export class Readiness {
         if (containsMarker(this.observation.items, this.guid)) {
           detected = true;
           clearTimeout(next);
+          retryWait?.("cancelled");
           const shellCompleted = this.observation.thread?.turns.some(
             (turn) =>
               ["completed", "failed", "interrupted"].includes(turn.status) &&
@@ -111,16 +119,20 @@ export class Readiness {
             !this.round &&
             !this.model
           ) {
-            this.round = Promise.resolve().then(() => {
-              if (settled || this.cancellations.size === 0) return;
-              this.model = {
-                prompt: `Reply exactly READY. Do not use tools, modify files, or perform other work. Readiness token: ${randomUUID()}.`,
-                starts: new Set(),
-                messages: new Set(),
-                started: false,
-              };
-              return this.io.submitText(this.model.prompt);
-            });
+            this.round = this.client.log
+              .capture(this.client.log.current())
+              .run(() =>
+                Promise.resolve().then(() => {
+                  if (settled || this.cancellations.size === 0) return;
+                  this.model = {
+                    prompt: `Reply exactly READY. Do not use tools, modify files, or perform other work. Readiness token: ${randomUUID()}.`,
+                    starts: new Set(),
+                    messages: new Set(),
+                    started: false,
+                  };
+                  return this.submit(this.model.prompt, "readiness bootstrap");
+                }),
+              );
             submit();
           }
         }
@@ -163,16 +175,25 @@ export class Readiness {
       };
       const submit = () => {
         if (settled) return;
+        retryWait?.("started");
         if (!this.round && !detected) {
           const delay = this.nextRoundAt - Date.now();
           if (delay > 0) {
-            next = setTimeout(submit, delay);
+            retryWait = log.schedule(
+              "readiness retry wait",
+              delay,
+              "next GUID round",
+            );
+            next = setTimeout(() => log.run(submit), delay);
             return;
           }
-          this.round = Promise.resolve().then(() => {
-            if (this.cancellations.size)
-              return this.io.submitText(`!${this.guid}`);
-          });
+          this.round = log.run(() =>
+            Promise.resolve().then(() => {
+              if (this.cancellations.size) {
+                return this.submit(`!${this.guid}`, "readiness GUID");
+              }
+            }),
+          );
         }
         const round = this.round;
         if (!round) return;
@@ -184,7 +205,14 @@ export class Readiness {
             }
             if (settled) return;
             changed();
-            if (!settled && !detected) next = setTimeout(submit, 2_000);
+            if (!settled && !detected) {
+              retryWait = log.schedule(
+                "readiness retry wait",
+                2_000,
+                "GUID not yet observed",
+              );
+              next = setTimeout(() => log.run(submit), 2_000);
+            }
           },
           (error: unknown) => {
             if (this.round === round) this.round = undefined;
@@ -197,10 +225,18 @@ export class Readiness {
       const scheduleDeadline = () => {
         // Node clamps overflowing timer delays to one millisecond.
         const seconds = Math.min(remaining, 2_147_483.647);
+        deadlineWait = log.schedule(
+          "readiness deadline",
+          seconds * 1_000,
+          "model-start readiness",
+        );
         deadline = setTimeout(() => {
           remaining -= seconds;
-          if (remaining > 0) scheduleDeadline();
-          else
+          if (remaining > 0) {
+            deadlineWait?.("started");
+            scheduleDeadline();
+          } else {
+            deadlineWait?.("timed out");
             finish(
               new Error(
                 this.discoveryFailure
@@ -209,6 +245,7 @@ export class Readiness {
                 this.discoveryFailure,
               ),
             );
+          }
         }, seconds * 1_000);
       };
       scheduleDeadline();
@@ -298,13 +335,28 @@ export class Readiness {
     } while (cursor);
   }
 
+  private submit(text: string, purpose: string): Promise<void> {
+    const log = this.client.log.capture();
+    this.inputLog = log;
+    log.info("terminal submit", { purpose });
+    try {
+      return this.io.submitText(text).catch((error: unknown) => {
+        log.error("terminal submit failed", error);
+        throw error;
+      });
+    } catch (error) {
+      log.error("terminal submit failed", error);
+      throw error;
+    }
+  }
+
   stop(): void {
     for (const cancel of this.cancellations) cancel();
   }
 
   async finish(): Promise<void> {
     await this.round?.catch((error: unknown) => {
-      this.client.log("readiness input failed", error);
+      this.inputLog?.error("readiness input failed", error);
       diagnostic(this.observation.sessionref, "readiness input failed");
     });
   }

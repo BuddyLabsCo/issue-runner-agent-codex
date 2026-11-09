@@ -1,3 +1,4 @@
+import type { Log, ScheduledLog } from "../codex/log.ts";
 import type { RequestRecovery } from "issue-runner-core/terminal";
 import { resolve } from "node:path";
 import { expectedFileExists } from "../codex/files.ts";
@@ -28,9 +29,11 @@ interface Candidate {
   assignment: NonNullable<Observation["assignment"]>;
   turn: string;
   category: Category;
+  log: Log;
 }
 
 interface Pending extends Candidate {
+  wait?: ScheduledLog;
   timer?: ReturnType<typeof setTimeout>;
   work?: Promise<void>;
 }
@@ -86,6 +89,7 @@ export class ErrorRecovery {
           assignment: observation.assignment,
           turn: turn.id,
           category: "error",
+          log: observation.client.log.capture(observation.client.log.current()),
         };
       if (
         (turn.status === "completed" || turn.status === "interrupted") &&
@@ -95,12 +99,14 @@ export class ErrorRecovery {
           assignment: observation.assignment,
           turn: turn.id,
           category: "missing-handoff",
+          log: observation.client.log.capture(observation.client.log.current()),
         };
     }
   }
 
   private cancel(): void {
     clearTimeout(this.pending?.timer);
+    this.pending?.wait?.("cancelled");
     this.pending = undefined;
   }
 
@@ -178,6 +184,7 @@ export class ErrorRecovery {
     try {
       const present = await expectedFileExists(
         resolve(this.cwd, candidate.assignment.expectedFile),
+        candidate.log,
       );
       if (!current()) return;
       if (present) {
@@ -189,8 +196,8 @@ export class ErrorRecovery {
       }
       if (!actionRequired) this.consider(candidate);
     } catch (error) {
+      candidate.log.error("recovery check failed", error);
       if (!current()) return;
-      this.observation.client.log("recovery check failed", error);
       diagnostic(this.observation.sessionref, "recovery operation failed");
       this.cancel();
     }
@@ -221,20 +228,27 @@ export class ErrorRecovery {
     const schedule = () => {
       // Node clamps overflowing timer delays to one millisecond.
       const seconds = Math.min(remaining, 2_147_483.647);
+      pending.wait = pending.log.schedule(
+        "recovery wait",
+        seconds * 1_000,
+        pending.category,
+      );
       pending.timer = setTimeout(() => {
+        pending.wait?.("started");
         remaining -= seconds;
         if (remaining > 0) {
           schedule();
           return;
         }
         let reevaluate = false;
-        const work = this.submit(pending)
+        const work = pending.log
+          .run(() => this.submit(pending))
           .then((retry) => {
             reevaluate = retry;
           })
           .catch((error: unknown) => {
             this.failure = { error };
-            this.observation.client.log("recovery input failed", error);
+            pending.log.error("recovery input failed", error);
             diagnostic(
               this.observation.sessionref,
               "recovery operation failed",
@@ -257,11 +271,14 @@ export class ErrorRecovery {
       await this.observation.refresh();
       if (this.pending !== pending) return true;
       const expectedFile = pending.assignment.expectedFile;
-      present = await expectedFileExists(resolve(this.cwd, expectedFile));
+      present = await expectedFileExists(
+        resolve(this.cwd, expectedFile),
+        pending.log,
+      );
     } catch (error) {
+      pending.log.error("recovery check failed", error);
       if (this.pending !== pending) return true;
       this.cancel();
-      this.observation.client.log("recovery check failed", error);
       diagnostic(this.observation.sessionref, "recovery operation failed");
       return false;
     }
@@ -289,6 +306,10 @@ export class ErrorRecovery {
       this.observation.sessionref,
       `recovery=${pending.category} attempt=${attempt}/${this.options.retryLimit}`,
     );
+    pending.log.info("Core recovery callback", {
+      category: pending.category,
+      attempt,
+    });
     await this.requestRecovery(pending.assignment.id);
     // Core may fulfill a stale request without submitting input.
     return true;

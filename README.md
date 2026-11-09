@@ -22,9 +22,15 @@ See [template comments](https://github.com/BuddyLabsCo/issue-runner-core/blob/ma
 
 ## Runtime notices and troubleshooting
 
-Each Tab creates a JSONL log under `<project>/logs` before connecting to Codex. The `[codex]: logfile: <absolute path>` notice identifies it. Reconnects reuse that file.
+One Runner CLI invocation shares a JSONL log sequence across its Codex enhancements. Stopping or replacing a Tab and reconnecting preserve that sequence. A new CLI invocation, including restart/resume, starts a separate sequence.
 
-Logs retain original errors, including service data, stack traces, causes, and daemon/proxy stderr, without redaction. Log creation or write failures do not interrupt Runner.
+The first enhancement selects the directory with `resolve(cwd, "..", "..", "..", "logs")`. The supported layout `<project>/worktrees/<run>/<ticket>` therefore writes to `<project>/logs`; this calculation does not discover the project root. Files use `agent-codex-log-<UTC timestamp>.jsonl`, with filename-safe millisecond timestamps and exclusive creation to avoid collisions. No logfile path notice is printed.
+
+Set `terminalPlugins.enhancements.logLevel` to `info` or `error` (default). `error` records failures, including invalid configuration. `info` also records enhancement-owned operation attempts and planned waits, including cancellations and timeouts. Successful response and terminal screen bodies are excluded. Ordinary daemon/proxy stderr and configuration warnings are info events. Original error details, stacks, causes, and info-level stderr remain unredacted.
+
+Every record has `time`, `level`, `event`, a generated invocation `runId`, a stable enhancement `instanceId`, and its `cwd`. Known `sessionref`, `assignmentId`, and `turnId` fields identify the originating context, including delayed operations. The logging `runId` is independent of Core's persistent Run identity.
+
+Before an append would exceed 2 MiB (2,097,152 UTF-8 bytes), the shared sink rotates the nonempty file. Records remain complete; a single larger record occupies an oversized file. All old files remain, so cumulative disk use is unbounded. Log creation or write failures report a diagnostic and do not interrupt Runner.
 
 Enhancement notices use inherited Runner stderr and include `[codex] sessionref=<ref>` (`unbound` before identification):
 
@@ -36,9 +42,9 @@ Enhancement notices use inherited Runner stderr and include `[codex] sessionref=
 | `recovery=error excluded=<classification>` | A budget, usage, authentication, model, context, or policy error needs attention instead of automatic recovery. |
 | `recovery=<category> exhausted=3/3` | That Assignment's recovery budget is exhausted. Observation continues; inspect the conversation before continuing manually. Error and missing-handoff budgets are separate. |
 | `observation disconnected` / `observation reconnect failed` | Recovery pauses while observation is unavailable. The enhancement retries every ten seconds without restarting Codex or the shared daemon. |
-| `recovery operation failed` | A native refresh, file check, or Core recovery callback failed. Inspect the Tab log. A failed check skips that action; fresh observations or Assignments can recover. Core input failures still propagate. |
+| `recovery operation failed` | A native refresh, file check, or Core recovery callback failed. Inspect the shared Codex log. A failed check skips that action; fresh observations or Assignments can recover. Core input failures still propagate. |
 | `hook preflight failed` | Hook inventory, trust repair, or verification failed. Startup continues if native readiness can complete. |
-| `monitoring operation failed` / `assignment operation failed` / `cleanup operation failed` | Inspect the Tab log. After readiness succeeds, enhancement failures do not interrupt Runner. Cleanup remains bounded and repeatable. |
+| `monitoring operation failed` / `assignment operation failed` / `cleanup operation failed` | Inspect the shared Codex log. After readiness succeeds, enhancement failures do not interrupt Runner. Cleanup remains bounded and repeatable. |
 | `initialization cleanup failed` / `readiness input failed` | An owned resource release or already-issued readiness input failed. Inspect the associated lifecycle error. |
 
 ## Developing the Codex enhancement
