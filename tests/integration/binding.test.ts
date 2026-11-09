@@ -9,6 +9,72 @@ import {
   thread,
 } from "../fixtures/native.ts";
 
+for (const status of ["completed", "inProgress"]) {
+  await test(`metadata during discovery binding preserves ${status} GUID history`, async (t) => {
+    const native = await nativeFixture(t);
+    const bound = bootstrapCapabilities(native, "found");
+    let reads = 0;
+    native.handler = (request) => {
+      if (request.method === "thread/loaded/list") return { data: ["found"] };
+      if (request.method !== "thread/read") return {};
+      if (++reads === 2) {
+        native.notify("thread/goal/cleared", { threadId: "found" });
+        native.notify("mcpServer/startupStatus/updated", {
+          threadId: "found",
+        });
+      }
+      const snapshot = thread("found", [
+        {
+          type: "commandExecution",
+          source: "userShell",
+          command: bound.inputs[0]?.slice(1),
+        },
+      ]);
+      snapshot.turns[0]!.status = status;
+      return { thread: snapshot };
+    };
+    const instance = await createEnhancement(
+      bound.io,
+      bound.requestRecovery,
+      { cwd: process.cwd(), env: {} },
+      {},
+    );
+    try {
+      await instance.startMonitoring();
+      const waiting = instance.waitUntilReady();
+      void waiting.catch(() => undefined);
+      await flush();
+      await flush();
+      assert.equal(reads, 2);
+      if (status === "inProgress") {
+        assert.equal(bound.inputs.length, 1);
+        native.notify("item/completed", {
+          threadId: "found",
+          turnId: "turn-1",
+          item: {
+            type: "commandExecution",
+            source: "userShell",
+            command: bound.inputs[0]!.slice(1),
+            status: "completed",
+          },
+        });
+        await flush();
+        assert.equal(bound.inputs.length, 1);
+        native.notify("turn/completed", {
+          threadId: "found",
+          turn: { id: "turn-1", status: "completed", items: [] },
+        });
+        await flush();
+      }
+      assert.equal(bound.inputs.length, 2);
+      assert.equal(await waiting, "found");
+      assert.equal(reads, 2);
+    } finally {
+      await instance.stop();
+    }
+  });
+}
+
 await test("a status notification during binding preserves initial history and readiness evidence", async (t) => {
   const native = await nativeFixture(t);
   let release!: (value: unknown) => void;
