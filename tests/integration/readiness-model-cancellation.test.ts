@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { createEnhancement } from "../../src/index.ts";
-import { boundCapabilities, flush, nativeFixture } from "../fixtures/native.ts";
+import {
+  boundCapabilities,
+  completeShellTurn,
+  flush,
+  nativeFixture,
+} from "../fixtures/native.ts";
 
 await test("stop cancels a pending bootstrap wait and awaits issued input without accepting late events", async (t) => {
   const native = await nativeFixture(t);
@@ -25,14 +30,7 @@ await test("stop cancels a pending bootstrap wait and awaits issued input withou
   t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
   const waiting = assert.rejects(instance.waitUntilReady(), /stopped/);
   await flush();
-  native.notify("item/completed", {
-    threadId: "known",
-    item: {
-      type: "commandExecution",
-      source: "userShell",
-      command: bound.inputs[0]!.slice(1),
-    },
-  });
+  completeShellTurn(native, bound.inputs[0]!.slice(1));
   await flush();
   assert.equal(bound.inputs.length, 2);
   let stopped = false;
@@ -78,14 +76,7 @@ await test("overlapping readiness waits share one bootstrap and preserve the rem
   t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
   const timeout = assert.rejects(instance.waitUntilReady(), /timed out/);
   await flush();
-  native.notify("item/completed", {
-    threadId: "known",
-    item: {
-      type: "commandExecution",
-      source: "userShell",
-      command: bound.inputs[0]!.slice(1),
-    },
-  });
+  completeShellTurn(native, bound.inputs[0]!.slice(1));
   await flush();
   t.mock.timers.tick(1_000);
   const second = instance.waitUntilReady();
@@ -142,14 +133,7 @@ await test("bootstrap input rejection propagates unchanged and the same instance
     (error) => error === failure,
   );
   await flush();
-  native.notify("item/completed", {
-    threadId: "known",
-    item: {
-      type: "commandExecution",
-      source: "userShell",
-      command: bound.inputs[0]!.slice(1),
-    },
-  });
+  completeShellTurn(native, bound.inputs[0]!.slice(1));
   await waiting;
   fails = false;
   assert.equal(await instance.waitUntilReady(), "known");

@@ -7,6 +7,7 @@ import { createEnhancement } from "../../src/index.ts";
 import {
   bootstrapCapabilities,
   boundCapabilities,
+  completeShellTurn,
   flush,
   nativeFixture,
 } from "../fixtures/native.ts";
@@ -446,14 +447,7 @@ await test("immediate stop and its cleanup retry leave another enhancement usabl
   await active.startMonitoring("known");
   const ready = active.waitUntilReady();
   await flush();
-  native.notify("item/completed", {
-    threadId: "known",
-    item: {
-      type: "commandExecution",
-      source: "userShell",
-      command: second.inputs[0]!.slice(1),
-    },
-  });
+  completeShellTurn(native, second.inputs[0]!.slice(1));
   await stopped.stop();
   assert.equal(await ready, "known");
   assert.deepEqual(first.inputs, []);

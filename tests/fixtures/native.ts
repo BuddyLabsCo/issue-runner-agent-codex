@@ -82,6 +82,19 @@ export function thread(id = "known", items: unknown[] = []) {
   };
 }
 
+export function completeShellTurn(
+  native: Pick<Awaited<ReturnType<typeof nativeFixture>>, "notify">,
+  command: string,
+  ref = "known",
+) {
+  native.notify("turn/completed", {
+    threadId: ref,
+    turn: thread(ref, [
+      { type: "commandExecution", source: "userShell", command },
+    ]).turns[0],
+  });
+}
+
 export function hook(key = "new hook") {
   return {
     key,

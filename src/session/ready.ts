@@ -100,7 +100,17 @@ export class Readiness {
         if (containsMarker(this.observation.items, this.guid)) {
           detected = true;
           clearTimeout(next);
-          if (this.observation.initialized && !this.round && !this.model) {
+          const shellCompleted = this.observation.thread?.turns.some(
+            (turn) =>
+              ["completed", "failed", "interrupted"].includes(turn.status) &&
+              containsMarker(turn.items, this.guid),
+          );
+          if (
+            this.observation.initialized &&
+            shellCompleted &&
+            !this.round &&
+            !this.model
+          ) {
             this.round = Promise.resolve().then(() => {
               if (settled || this.cancellations.size === 0) return;
               this.model = {

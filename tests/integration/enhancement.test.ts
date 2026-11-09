@@ -3,6 +3,7 @@ import { test } from "node:test";
 import { createEnhancement } from "../../src/index.ts";
 import {
   bootstrapCapabilities,
+  completeShellTurn,
   flush,
   nativeFixture,
 } from "../fixtures/native.ts";
@@ -32,14 +33,20 @@ await test("observes only the supplied conversation and accepts a failed concate
   });
   await flush();
   assert.equal(resolved, false);
-  native.notify("item/completed", {
+  native.notify("turn/completed", {
     threadId: "known",
-    item: {
-      type: "commandExecution",
-      source: "userShell",
-      command: `prefix\n${marker}suffix`,
-      status: "failed",
-      exitCode: 127,
+    turn: {
+      id: "shell",
+      status: "completed",
+      items: [
+        {
+          type: "commandExecution",
+          source: "userShell",
+          command: `prefix\n${marker}suffix`,
+          status: "failed",
+          exitCode: 127,
+        },
+      ],
     },
   });
   assert.equal(await ready, "known");
@@ -109,13 +116,19 @@ await test("each wait has a deadline and retries on the same instance use its GU
   await flush();
   assert.equal(bound.inputs.length, 4);
   assert.equal(new Set(bound.inputs).size, 1);
-  native.notify("item/completed", {
+  native.notify("turn/completed", {
     threadId: "known",
-    item: {
-      type: "commandExecution",
-      source: "userShell",
-      command: bound.inputs[0]!.slice(1),
-      exitCode: 1,
+    turn: {
+      id: "shell",
+      status: "completed",
+      items: [
+        {
+          type: "commandExecution",
+          source: "userShell",
+          command: bound.inputs[0]!.slice(1),
+          exitCode: 1,
+        },
+      ],
     },
   });
   assert.equal(await retry, "known");
@@ -159,14 +172,7 @@ await test("readiness finishes an issued input round before returning, including
   void ready.then(() => {
     resolved = true;
   });
-  native.notify("item/completed", {
-    threadId: "known",
-    item: {
-      type: "commandExecution",
-      source: "userShell",
-      command: bound.inputs[0]!.slice(1),
-    },
-  });
+  completeShellTurn(native, bound.inputs[0]!.slice(1));
   await flush();
   assert.equal(resolved, false);
   assert.equal(bound.inputs.length, 1);
@@ -266,14 +272,7 @@ await test("Host input errors propagate and a retry can use the same observation
   bound.io.submitText = submit;
   const waiting = instance.waitUntilReady();
   await flush();
-  native.notify("item/completed", {
-    threadId: "known",
-    item: {
-      type: "commandExecution",
-      source: "userShell",
-      command: bound.inputs[0]!.slice(1),
-    },
-  });
+  completeShellTurn(native, bound.inputs[0]!.slice(1));
   assert.equal(await waiting, "known");
   await instance.stop();
 });
@@ -314,25 +313,11 @@ await test("two Hosts keep distinct GUIDs and exact conversation bindings", asyn
   void br.then(() => {
     secondReady = true;
   });
-  native.notify("item/completed", {
-    threadId: "first",
-    item: {
-      type: "commandExecution",
-      source: "userShell",
-      command: first.inputs[0]!.slice(1),
-    },
-  });
+  completeShellTurn(native, first.inputs[0]!.slice(1), "first");
   assert.equal(await ar, "first");
   assert.equal(secondReady, false);
   await a.stop();
-  native.notify("item/completed", {
-    threadId: "second",
-    item: {
-      type: "commandExecution",
-      source: "userShell",
-      command: second.inputs[0]!.slice(1),
-    },
-  });
+  completeShellTurn(native, second.inputs[0]!.slice(1), "second");
   assert.equal(await br, "second");
   await b.stop();
 });
@@ -407,10 +392,7 @@ await test("assignment replacement and bound turn start invalidate pending snaps
     await starting;
     await flush();
     assert.equal(resolved, change === "continuation");
-    native.notify("item/completed", {
-      threadId: "known",
-      item: { type: "commandExecution", source: "userShell", command: marker },
-    });
+    completeShellTurn(native, marker);
     assert.equal(await ready, "known");
     await instance.stop();
   }
@@ -497,14 +479,7 @@ await test("overlapping waits retain separate deadlines while sharing marker inp
   await first;
   await flush();
   assert.equal(secondFinished, false);
-  native.notify("item/completed", {
-    threadId: "known",
-    item: {
-      type: "commandExecution",
-      source: "userShell",
-      command: bound.inputs[0]!.slice(1),
-    },
-  });
+  completeShellTurn(native, bound.inputs[0]!.slice(1));
   assert.equal(await second, "known");
   await instance.stop();
 });

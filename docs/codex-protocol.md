@@ -112,13 +112,18 @@ sequenceDiagram
         E->>N: thread/read (matching threadId, includeTurns)
         N-->>E: Current thread and history
     end
+    opt GUID shell turn still running
+        N-->>E: turn/completed for the GUID shell turn
+    end
     Note over E: Finish issued GUID input<br/>Submit unique READY prompt<br/>through TerminalIO
     N-->>E: turn/started (bound threadId, turn ID)
     N-->>E: Matching userMessage in turn or item notification
     Note over E: Correlate both pieces<br/>Return exact ref before answer
 ```
 
-GUID rounds repeat after two seconds while previous input has settled. Candidate history RPC failures allow other candidates and later scans; malformed required data rejects readiness. Each wait has its own deadline. Retry retains the instance's GUID, discovered ref and observation without replaying the Agent command. Model-start evidence lets settings persist before Core saves the ref; it does not repair settings lost by an older GUID-only session.
+GUID rounds repeat after two seconds while previous input has settled. Once the GUID is observed, readiness stops marker rounds and waits for its shell turn to end before submitting the READY prompt. Command item completion alone does not end the turn. An ended GUID turn in history also permits bootstrap without waiting for another completion notification.
+
+Candidate history RPC failures allow other candidates and later scans; malformed required data rejects readiness. Each wait has its own deadline. Retry retains the instance's GUID, discovered ref and observation without replaying the Agent command. Model-start evidence lets settings persist before Core saves the ref; it does not repair settings lost by an older GUID-only session.
 
 ### State observation and reconnection
 

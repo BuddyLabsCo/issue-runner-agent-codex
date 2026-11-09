@@ -118,7 +118,10 @@ await test("reattachment stays unavailable until refreshed and retains the ref, 
   native.notify("item/completed", { threadId: "unrelated", item });
   await flush();
   assert.equal(ready, false);
-  native.notify("item/completed", { threadId: "known", item });
+  native.notify("turn/completed", {
+    threadId: "known",
+    turn: thread("known", [item]).turns[0],
+  });
   assert.equal(await waiting, "known");
   assert.deepEqual(
     native.requests
