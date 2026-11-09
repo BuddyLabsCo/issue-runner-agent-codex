@@ -192,11 +192,12 @@ await test("structured trust preserves unusual path characters, project fields a
     model: "retained model",
   };
   const stderr = t.mock.method(process.stderr, "write", () => true);
+  // Keep the synthetic project key out of the logger's real filesystem path.
   for (let i = 0; i < 2; i++) {
     const instance = await createEnhancement(
       boundCapabilities().io,
       boundCapabilities().requestRecovery,
-      { cwd: join(primary, "task"), env: {} },
+      { cwd: join(native.primary, "task"), env: {} },
       {},
     );
     assert.deepEqual(native.configuration, expected);
