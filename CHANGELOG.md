@@ -1,12 +1,20 @@
 # Changelog
 
+## 1.0.4
+
+- - fix: [issue-66] preserve Enhancement Pause through recovery races (#70)
+- - fix: [issue-65] isolate Enhancement Pause across Assignments and Runs (#69)
+- - fix: [issue-64] persist Assignment Enhancement Pause until resume (#67)
+
 ## 1.0.3
 
 - - feat: [issue-57] share contextual rotating Codex logs (#61)
 
+
 ## 1.0.2
 
 - - fix: [issue-58] preserve history across metadata notifications (#59)
+
 
 
 ## 1.0.1
@@ -17,9 +25,11 @@
 
 
 
+
 ## 1.0.0
 
 - - docs: [issue-38] consolidate Codex enhancement documentation (#48)
+
 
 
 
@@ -32,9 +42,11 @@
 
 
 
+
 ## 0.1.1
 
 - - chore: [issue-42] update Core dependency to 0.1.1 (#43)
+
 
 
 
