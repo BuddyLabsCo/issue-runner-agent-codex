@@ -111,7 +111,11 @@ await test("ordinary Host errors remain diagnosable without failing cleanup", as
       const instance = await createEnhancement(
         bound.io,
         bound.requestRecovery,
-        { cwd: process.cwd(), env: {} },
+        {
+          enhancementPause: bound.enhancementPause,
+          cwd: process.cwd(),
+          env: {},
+        },
         { retryDelay: [0] },
       );
       t.mock.timers.enable({ apis: ["setTimeout"] });
@@ -154,7 +158,11 @@ await test("observation and file-read errors skip recovery without latching fail
       const instance = await createEnhancement(
         bound.io,
         bound.requestRecovery,
-        { cwd: process.cwd(), env: {} },
+        {
+          enhancementPause: bound.enhancementPause,
+          cwd: process.cwd(),
+          env: {},
+        },
         {},
       );
       t.mock.timers.enable({ apis: ["setTimeout"] });

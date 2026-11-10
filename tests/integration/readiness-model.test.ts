@@ -27,7 +27,7 @@ await test("fresh discovery starts a bootstrap model turn before returning the e
   const instance = await createEnhancement(
     bound.io,
     bound.requestRecovery,
-    { cwd: process.cwd(), env: {} },
+    { enhancementPause: bound.enhancementPause, cwd: process.cwd(), env: {} },
     {},
   );
   t.after(() => instance.stop());
@@ -85,7 +85,7 @@ await test("a supplied GUID-only ref correlates an early start and later user in
   const instance = await createEnhancement(
     bound.io,
     bound.requestRecovery,
-    { cwd: process.cwd(), env: {} },
+    { enhancementPause: bound.enhancementPause, cwd: process.cwd(), env: {} },
     {},
   );
   t.after(async () => {
@@ -108,7 +108,7 @@ await test("shell turns, stale starts and unrelated sessions or turn IDs cannot 
   const instance = await createEnhancement(
     bound.io,
     bound.requestRecovery,
-    { cwd: process.cwd(), env: {} },
+    { enhancementPause: bound.enhancementPause, cwd: process.cwd(), env: {} },
     {},
   );
   t.after(() => instance.stop());
@@ -167,7 +167,7 @@ for (const status of ["failed", "interrupted"]) {
     const instance = await createEnhancement(
       bound.io,
       bound.requestRecovery,
-      { cwd: process.cwd(), env: {} },
+      { enhancementPause: bound.enhancementPause, cwd: process.cwd(), env: {} },
       { retryDelay: [0], handoffRecoveryDelaySeconds: 0 },
     );
     t.after(() => instance.stop());
@@ -214,7 +214,7 @@ await test("missing model start times out, retries with a new token and rejects 
   const instance = await createEnhancement(
     bound.io,
     bound.requestRecovery,
-    { cwd: process.cwd(), env: {} },
+    { enhancementPause: bound.enhancementPause, cwd: process.cwd(), env: {} },
     { readyTimeout: 3 },
   );
   t.after(() => instance.stop());
@@ -264,7 +264,7 @@ await test("stop cancels bootstrap input queued after GUID detection", async (t)
   const instance = await createEnhancement(
     bound.io,
     bound.requestRecovery,
-    { cwd: process.cwd(), env: {} },
+    { enhancementPause: bound.enhancementPause, cwd: process.cwd(), env: {} },
     {},
   );
   await instance.startMonitoring("known");

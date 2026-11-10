@@ -49,8 +49,12 @@ await test("process logging", async (suite) => {
           return child;
         },
       );
-      const context = { cwd, env: {} };
       const bound = boundCapabilities();
+      const context = {
+        enhancementPause: bound.enhancementPause,
+        cwd,
+        env: {},
+      };
       const first = await createEnhancement(
         bound.io,
         bound.requestRecovery,
@@ -164,7 +168,11 @@ await test("process logging", async (suite) => {
       const instance = await createEnhancement(
         bound.io,
         bound.requestRecovery,
-        { cwd: process.cwd(), env: {} },
+        {
+          enhancementPause: bound.enhancementPause,
+          cwd: process.cwd(),
+          env: {},
+        },
         { logLevel: "info" },
       );
       await instance.stop();
@@ -186,7 +194,11 @@ await test("process logging", async (suite) => {
         messages.push(value);
         return true;
       });
-      const client = await connectNative({ cwd: process.cwd(), env: {} });
+      const client = await connectNative({
+        enhancementPause: boundCapabilities().enhancementPause,
+        cwd: process.cwd(),
+        env: {},
+      });
       t.after(() => client.close());
       t.mock.timers.enable({ apis: ["setTimeout"] });
       const original = {
@@ -254,7 +266,11 @@ await test("process logging", async (suite) => {
       const instance = await createEnhancement(
         bound.io,
         bound.requestRecovery,
-        { cwd: process.cwd(), env: {} },
+        {
+          enhancementPause: bound.enhancementPause,
+          cwd: process.cwd(),
+          env: {},
+        },
         { logLevel: "info" },
       );
       await instance.stop();
@@ -275,7 +291,7 @@ await test("process logging", async (suite) => {
       const instance = await createEnhancement(
         bound.io,
         bound.requestRecovery,
-        { cwd, env: {} },
+        { enhancementPause: bound.enhancementPause, cwd, env: {} },
         {},
       );
       t.after(() => instance.stop());

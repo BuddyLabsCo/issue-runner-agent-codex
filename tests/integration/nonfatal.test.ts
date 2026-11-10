@@ -16,7 +16,7 @@ await test("after readiness monitoring and cleanup failures leave contract calls
   const instance = await createEnhancement(
     bound.io,
     bound.requestRecovery,
-    { cwd: process.cwd(), env: {} },
+    { enhancementPause: bound.enhancementPause, cwd: process.cwd(), env: {} },
     {},
   );
   t.after(() => instance.stop());
@@ -50,7 +50,7 @@ for (const source of ["file", "read"]) {
     const instance = await createEnhancement(
       bound.io,
       bound.requestRecovery,
-      { cwd: process.cwd(), env: {} },
+      { enhancementPause: bound.enhancementPause, cwd: process.cwd(), env: {} },
       { retryDelay: [1] },
     );
     t.after(() => instance.stop());
@@ -117,7 +117,7 @@ await test("stop stays bounded after readiness while a recovery callback is stil
   const instance = await createEnhancement(
     bound.io,
     bound.requestRecovery,
-    { cwd: process.cwd(), env: {} },
+    { enhancementPause: bound.enhancementPause, cwd: process.cwd(), env: {} },
     { retryDelay: [1] },
   );
   t.after(() => instance.stop());
@@ -164,7 +164,7 @@ await test("recovery-prompt delivery failure still propagates after readiness", 
   const instance = await createEnhancement(
     bound.io,
     bound.requestRecovery,
-    { cwd: process.cwd(), env: {} },
+    { enhancementPause: bound.enhancementPause, cwd: process.cwd(), env: {} },
     { retryDelay: [1] },
   );
   t.after(() => instance.stop());
@@ -200,7 +200,7 @@ await test("empty hook inventory requires only one query", async (t) => {
   const instance = await createEnhancement(
     bound.io,
     bound.requestRecovery,
-    { cwd: process.cwd(), env: {} },
+    { enhancementPause: bound.enhancementPause, cwd: process.cwd(), env: {} },
     {},
   );
   assert.equal(

@@ -18,6 +18,7 @@ await test(
     native.configuration.model = "preserved";
     const bound = boundCapabilities();
     const context = {
+      enhancementPause: bound.enhancementPause,
       cwd: join(native.primary, "linked task"),
       env: { CODEX_HOME: "injected-home" },
     };
@@ -107,7 +108,11 @@ for (const status of ["ok", "okOverridden"]) {
     const instance = await createEnhancement(
       boundCapabilities().io,
       boundCapabilities().requestRecovery,
-      { cwd: process.cwd(), env: {} },
+      {
+        enhancementPause: boundCapabilities().enhancementPause,
+        cwd: process.cwd(),
+        env: {},
+      },
       {},
     );
     assert.deepEqual(native.configuration.projects, {
@@ -141,7 +146,7 @@ await test("factory accepts an already-trusted checkout with the reported unrela
   const instance = await createEnhancement(
     bound.io,
     bound.requestRecovery,
-    { cwd: process.cwd(), env: {} },
+    { enhancementPause: bound.enhancementPause, cwd: process.cwd(), env: {} },
     {},
   );
   assert.deepEqual(native.configuration, before);
@@ -163,7 +168,11 @@ await test("factory rejects relative primary metadata instead of resolving it ag
     createEnhancement(
       boundCapabilities().io,
       boundCapabilities().requestRecovery,
-      { cwd: process.cwd(), env: {} },
+      {
+        enhancementPause: boundCapabilities().enhancementPause,
+        cwd: process.cwd(),
+        env: {},
+      },
       {},
     ),
     /ordinary primary checkout/,
@@ -197,7 +206,11 @@ await test("structured trust preserves unusual path characters, project fields a
     const instance = await createEnhancement(
       boundCapabilities().io,
       boundCapabilities().requestRecovery,
-      { cwd: join(native.primary, "task"), env: {} },
+      {
+        enhancementPause: boundCapabilities().enhancementPause,
+        cwd: join(native.primary, "task"),
+        env: {},
+      },
       {},
     );
     assert.deepEqual(native.configuration, expected);
@@ -221,7 +234,11 @@ await test("already-trusted creation reads effective configuration without chang
   const instance = await createEnhancement(
     boundCapabilities().io,
     boundCapabilities().requestRecovery,
-    { cwd: process.cwd(), env: {} },
+    {
+      enhancementPause: boundCapabilities().enhancementPause,
+      cwd: process.cwd(),
+      env: {},
+    },
     {},
   );
   assert.deepEqual(native.configuration, before);
@@ -249,7 +266,11 @@ for (const failure of [
     const other = await createEnhancement(
       boundCapabilities().io,
       boundCapabilities().requestRecovery,
-      { cwd: process.cwd(), env: {} },
+      {
+        enhancementPause: boundCapabilities().enhancementPause,
+        cwd: process.cwd(),
+        env: {},
+      },
       {},
     );
     native.configuration.projects = {};
@@ -288,7 +309,11 @@ for (const failure of [
       createEnhancement(
         bound.io,
         bound.requestRecovery,
-        { cwd: process.cwd(), env: {} },
+        {
+          enhancementPause: bound.enhancementPause,
+          cwd: process.cwd(),
+          env: {},
+        },
         {},
       ),
       (error: Error) => {
@@ -353,7 +378,11 @@ for (const layout of [
       createEnhancement(
         boundCapabilities().io,
         boundCapabilities().requestRecovery,
-        { cwd: process.cwd(), env: {} },
+        {
+          enhancementPause: boundCapabilities().enhancementPause,
+          cwd: process.cwd(),
+          env: {},
+        },
         {},
       ),
       /Codex/,

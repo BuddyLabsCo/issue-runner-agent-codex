@@ -67,9 +67,15 @@ await test("only the literal prefix of the complete latest final assistant reply
       await flush();
       assert.equal(bound.recoveries, paused ? 0 : 1);
       assert.deepEqual(
+        bound.pauses,
+        paused
+          ? [{ assignmentId: "assignment-1", message: "ACTION REQUIRED!!!" }]
+          : [],
+      );
+      assert.deepEqual(
         stderr,
         paused
-          ? ["[codex] sessionref=known ACTION REQUIRED!!!\n"]
+          ? []
           : [
               "[codex] sessionref=known recovery=missing-handoff attempt=1/1\n",
               "[codex] sessionref=known recovery=missing-handoff exhausted=1/1\n",

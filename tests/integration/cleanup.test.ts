@@ -18,7 +18,7 @@ await test("concurrent stops share failure and retry unfinished native releases"
   const instance = await createEnhancement(
     bound.io,
     bound.requestRecovery,
-    { cwd: process.cwd(), env: {} },
+    { enhancementPause: assert.fail, cwd: process.cwd(), env: {} },
     {},
   );
   const proxy = native.proxies[0]!;
@@ -58,7 +58,7 @@ await test("a failed socket release does not prevent proxy cleanup or repeat it 
   const instance = await createEnhancement(
     boundCapabilities().io,
     boundCapabilities().requestRecovery,
-    { cwd: process.cwd(), env: {} },
+    { enhancementPause: assert.fail, cwd: process.cwd(), env: {} },
     {},
   );
   const kill = t.mock.method(native.proxies[0]!, "kill");
@@ -92,7 +92,7 @@ await test("stop waits for issued readiness input to settle without sending repl
       const instance = await createEnhancement(
         bound.io,
         bound.requestRecovery,
-        { cwd: process.cwd(), env: {} },
+        { enhancementPause: assert.fail, cwd: process.cwd(), env: {} },
         {},
       );
       t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
@@ -145,7 +145,7 @@ await test("initialization and preflight errors survive cleanup failure with a s
         createEnhancement(
           bound.io,
           bound.requestRecovery,
-          { cwd: process.cwd(), env: {} },
+          { enhancementPause: assert.fail, cwd: process.cwd(), env: {} },
           {},
         ),
         stage === "preflight"
@@ -182,7 +182,7 @@ await test("factory releases an allocated proxy when connection construction thr
     createEnhancement(
       boundCapabilities().io,
       boundCapabilities().requestRecovery,
-      { cwd: process.cwd(), env: {} },
+      { enhancementPause: assert.fail, cwd: process.cwd(), env: {} },
       {},
     ),
     (error) => error === failure,
@@ -198,7 +198,7 @@ await test("proxy release has a finite deadline and remains retryable after time
         const instance = await createEnhancement(
           boundCapabilities().io,
           boundCapabilities().requestRecovery,
-          { cwd: process.cwd(), env: {} },
+          { enhancementPause: assert.fail, cwd: process.cwd(), env: {} },
           {},
         );
         const proxy = native.proxies[0]!;
@@ -270,7 +270,7 @@ await test("kill exceptions and child errors reject release and leave a later cl
       const instance = await createEnhancement(
         boundCapabilities().io,
         boundCapabilities().requestRecovery,
-        { cwd: process.cwd(), env: {} },
+        { enhancementPause: assert.fail, cwd: process.cwd(), env: {} },
         {},
       );
       const proxy = native.proxies[0]!;
@@ -383,7 +383,7 @@ await test("stop shares an in-flight reconnect release and never opens its repla
   const instance = await createEnhancement(
     bound.io,
     bound.requestRecovery,
-    { cwd: process.cwd(), env: {} },
+    { enhancementPause: assert.fail, cwd: process.cwd(), env: {} },
     {},
   );
   await instance.startMonitoring("known");
@@ -422,7 +422,11 @@ await test("immediate stop and its cleanup retry leave another enhancement usabl
   const native = await nativeFixture(t);
   const first = boundCapabilities();
   const second = bootstrapCapabilities(native);
-  const context = { cwd: process.cwd(), env: {} };
+  const context = {
+    enhancementPause: assert.fail,
+    cwd: process.cwd(),
+    env: {},
+  };
   const stopped = await createEnhancement(
     first.io,
     first.requestRecovery,
@@ -465,7 +469,7 @@ await test("stop reports all remaining release failures and retries them togethe
   const instance = await createEnhancement(
     boundCapabilities().io,
     boundCapabilities().requestRecovery,
-    { cwd: process.cwd(), env: {} },
+    { enhancementPause: assert.fail, cwd: process.cwd(), env: {} },
     {},
   );
   const socketFailure = new Error("socket cleanup failed");

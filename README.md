@@ -20,11 +20,15 @@ Core discovers `issue-runner-agent-codex` for roles whose Agent identifier is `c
 
 See [template comments](https://github.com/BuddyLabsCo/issue-runner-core/blob/main/templates/config.yaml) for supported configuration fields.
 
+Core 1.0.2 or newer must supply enhancement contract version 3.
+
 ## Runtime notices and troubleshooting
 
 One Runner CLI invocation shares a JSONL log sequence across its Codex enhancements.  
 
 Set `terminalPlugins.enhancements.logLevel` to `info` or `error` (default). `error` records failures, including invalid configuration. `info` also records enhancement-owned operation attempts and planned waits, including cancellations and timeouts. 
+
+When a complete final reply starts with literal `[action required]` (allowing leading whitespace), Core queues `ACTION REQUIRED!!!`. Both recovery categories pause for that Assignment across later turns. Resolve the request, then press Enter on Core's confirmation to resume ordinary recovery checks and delays. Observation and handoff checks continue during the pause.
 
 Enhancement notices use inherited Runner stderr and include `[codex] sessionref=<ref>` (`unbound` before identification):
 
@@ -32,7 +36,6 @@ Enhancement notices use inherited Runner stderr and include `[codex] sessionref=
 | --- | --- |
 | `recovery=error attempt=1/3` | A final failed turn qualifies for an automatic recovery request. Native retries and active conversations suppress requests. Core owns the continuation input. |
 | `recovery=missing-handoff attempt=1/3` | A completed or interrupted turn is idle without its expected handoff. Recovery waits before every request and rechecks native state and file presence. |
-| `ACTION REQUIRED!!!` | The latest final reply starts with literal `[action required]`, allowing leading whitespace. Missing-handoff recovery pauses; inspect the conversation and resolve the requested action. |
 | `recovery=error excluded=<classification>` | A budget, usage, authentication, model, context, or policy error needs attention instead of automatic recovery. |
 | `recovery=<category> exhausted=3/3` | That Assignment's recovery budget is exhausted. Observation continues; inspect the conversation before continuing manually. Error and missing-handoff budgets are separate. |
 | `observation disconnected` / `observation reconnect failed` | Recovery pauses while observation is unavailable. The enhancement retries every ten seconds without restarting Codex or the shared daemon. |
@@ -54,6 +57,6 @@ npm run check                               # Formatting, lint, and types
 npm test                                    # Full suite, including package checks
 ```
 
-Development uses exact npm `issue-runner-core@0.1.1` through type-only imports. It needs no local Core archive or sibling checkout. Package tests install the built runtime without Core before checking declarations against development Core. Integration tests use injected capabilities and native protocol substitutes; they do not establish real terminal or model acceptance.
+Development uses exact npm `issue-runner-core@1.0.2` through type-only imports. It needs no local Core archive or sibling checkout. Package tests install the built runtime without Core before checking declarations against development Core. Integration tests use injected capabilities and native protocol substitutes; they do not establish real terminal or model acceptance.
 
 Read the [Core public integration contract](https://github.com/BuddyLabsCo/issue-runner-core/blob/main/docs/terminal-contract.md) for interfaces, [Codex protocol](https://github.com/BuddyLabsCo/issue-runner-agent-codex/blob/main/docs/codex-protocol.md) for native interactions, and [code architecture](https://github.com/BuddyLabsCo/issue-runner-agent-codex/blob/main/docs/code-architecture.md) for ownership and test placement. These repository links also work from the npm README. Publication after documentation cleanup remains the maintainer's decision.

@@ -136,7 +136,7 @@ await test("unbound and unassigned instances never schedule business recovery", 
   const instance = await createEnhancement(
     bound.io,
     bound.requestRecovery,
-    { cwd: process.cwd(), env: {} },
+    { enhancementPause: bound.enhancementPause, cwd: process.cwd(), env: {} },
     {},
   );
   try {
@@ -152,7 +152,7 @@ await test("unbound and unassigned instances never schedule business recovery", 
   const second = await createEnhancement(
     bound.io,
     bound.requestRecovery,
-    { cwd: process.cwd(), env: {} },
+    { enhancementPause: bound.enhancementPause, cwd: process.cwd(), env: {} },
     {},
   );
   try {

@@ -78,13 +78,18 @@ await test("refreshed endings reach existing policies without replaying historic
       t.mock.timers.tick(1);
       await flush();
       assert.equal(bound.recoveries, status === "action-required" ? 0 : 1);
-      assert.ok(
-        stderr.includes(
-          status === "action-required"
-            ? "[codex] sessionref=known ACTION REQUIRED!!!\n"
-            : `[codex] sessionref=known recovery=${status === "failed" ? "error" : "missing-handoff"} attempt=1/3\n`,
-        ),
-      );
+      if (status === "action-required") {
+        assert.deepEqual(bound.pauses, [
+          { assignmentId: "assignment-1", message: "ACTION REQUIRED!!!" },
+        ]);
+        assert.ok(stderr.every((line) => !line.includes("ACTION REQUIRED!!!")));
+      } else {
+        assert.ok(
+          stderr.includes(
+            `[codex] sessionref=known recovery=${status === "failed" ? "error" : "missing-handoff"} attempt=1/3\n`,
+          ),
+        );
+      }
     });
   }
 });

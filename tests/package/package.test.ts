@@ -133,7 +133,7 @@ await test("imports the packed runtime without Core, then checks declarations ag
   assert.deepEqual(manifest.exports, {
     ".": { types: "./dist/index.d.ts", default: "./dist/index.js" },
   });
-  assert.equal(manifest.devDependencies["issue-runner-core"], "0.1.1");
+  assert.equal(manifest.devDependencies["issue-runner-core"], "1.0.2");
   assert.equal(manifest.dependencies?.["issue-runner-core"], undefined);
   assert.equal(manifest.optionalDependencies, undefined);
   assert.equal(manifest.bundledDependencies, undefined);
@@ -153,7 +153,7 @@ await test("imports the packed runtime without Core, then checks declarations ag
         'registerHooks({ resolve(specifier, context, next) { if (specifier === "issue-runner-core" || specifier.startsWith("issue-runner-core/")) throw new Error("Runtime must not load Core"); return next(specifier, context); } });',
         'const enhancement = await import("issue-runner-agent-codex");',
         'assert.deepEqual(Object.keys(enhancement).sort(), ["contractVersion", "createEnhancement"]);',
-        "assert.equal(enhancement.contractVersion, 2);",
+        "assert.equal(enhancement.contractVersion, 3);",
         'assert.equal(typeof enhancement.createEnhancement, "function");',
       ].join("\n"),
     ],
@@ -168,7 +168,7 @@ await test("imports the packed runtime without Core, then checks declarations ag
       "--ignore-scripts",
       "--no-audit",
       "--no-fund",
-      "issue-runner-core@0.1.1",
+      "issue-runner-core@1.0.2",
     ],
     scratch,
   );
@@ -178,7 +178,9 @@ await test("imports the packed runtime without Core, then checks declarations ag
       'import type { EnhancementModule } from "issue-runner-core/terminal";',
       'import * as enhancement from "issue-runner-agent-codex";',
       "const contract: EnhancementModule = enhancement;",
-      'if (contract.contractVersion !== 2) throw new Error("Wrong contract");',
+      'async function resume(instance: Awaited<ReturnType<typeof enhancement.createEnhancement>>) { await instance.enhancementResume("assignment-1"); }',
+      "void resume;",
+      'if (contract.contractVersion !== 3) throw new Error("Wrong contract");',
     ].join("\n"),
   );
   await execute(
@@ -202,7 +204,7 @@ await test("imports the packed runtime without Core, then checks declarations ag
     [
       "--input-type=module",
       "-e",
-      'import { enhancementContractVersion } from "issue-runner-core/terminal"; import { contractVersion } from "issue-runner-agent-codex"; if (enhancementContractVersion !== 2 || contractVersion !== enhancementContractVersion) throw new Error("Wrong Core artifact");',
+      'import { enhancementContractVersion } from "issue-runner-core/terminal"; import { contractVersion } from "issue-runner-agent-codex"; if (enhancementContractVersion !== 3 || contractVersion !== enhancementContractVersion) throw new Error("Wrong Core artifact");',
     ],
     { cwd: scratch },
   );
@@ -230,22 +232,22 @@ await test("imports the packed runtime without Core, then checks declarations ag
   assert.equal(lock.packages[""]?.version, sourceManifest.version);
   assert.equal(
     lock.packages[""]?.devDependencies?.["issue-runner-core"],
-    "0.1.1",
+    "1.0.2",
   );
   const core = lock.packages["node_modules/issue-runner-core"]!;
   assert.equal(
     core.resolved,
-    "https://registry.npmjs.org/issue-runner-core/-/issue-runner-core-0.1.1.tgz",
+    "https://registry.npmjs.org/issue-runner-core/-/issue-runner-core-1.0.2.tgz",
   );
   assert.equal(core.dev, true);
-  assert.equal(core.version, "0.1.1");
+  assert.equal(core.version, "1.0.2");
   assert.match(core.integrity ?? "", /^sha512-[A-Za-z0-9+/]+={0,2}$/);
   const consumerLock = JSON.parse(
     await readFile(join(scratch, "package-lock.json"), "utf8"),
   ) as typeof lock;
   assert.equal(
     consumerLock.packages[""]?.devDependencies?.["issue-runner-core"],
-    "0.1.1",
+    "1.0.2",
   );
   const installedCore =
     consumerLock.packages["node_modules/issue-runner-core"]!;

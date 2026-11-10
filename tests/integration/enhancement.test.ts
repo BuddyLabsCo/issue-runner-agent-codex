@@ -1,3 +1,4 @@
+import { boundCapabilities } from "../fixtures/native.ts";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { createEnhancement } from "../../src/index.ts";
@@ -14,7 +15,11 @@ await test("observes only the supplied conversation and accepts a failed concate
   const instance = await createEnhancement(
     bound.io,
     bound.requestRecovery,
-    { cwd: process.cwd(), env: { CODEX_HOME: "injected-home" } },
+    {
+      enhancementPause: bound.enhancementPause,
+      cwd: process.cwd(),
+      env: { CODEX_HOME: "injected-home" },
+    },
     { unrelatedOption: true },
   );
 
@@ -93,7 +98,7 @@ await test("each wait has a deadline and retries on the same instance use its GU
   const instance = await createEnhancement(
     bound.io,
     bound.requestRecovery,
-    { cwd: process.cwd(), env: {} },
+    { enhancementPause: bound.enhancementPause, cwd: process.cwd(), env: {} },
     { readyTimeout: 5 },
   );
   await instance.startMonitoring("known");
@@ -158,7 +163,7 @@ await test("readiness finishes an issued input round before returning, including
   const instance = await createEnhancement(
     bound.io,
     bound.requestRecovery,
-    { cwd: process.cwd(), env: {} },
+    { enhancementPause: bound.enhancementPause, cwd: process.cwd(), env: {} },
     { readyTimeout: 3 },
   );
   await instance.startMonitoring("known");
@@ -187,7 +192,7 @@ await test("unbound instances never adopt notification-only evidence and stop in
   const instance = await createEnhancement(
     bound.io,
     bound.requestRecovery,
-    { cwd: process.cwd(), env: {} },
+    { enhancementPause: bound.enhancementPause, cwd: process.cwd(), env: {} },
     {},
   );
   await instance.startMonitoring();
@@ -229,7 +234,7 @@ await test("disconnect rejects pending readiness, is redacted on stderr, and sto
   const instance = await createEnhancement(
     bound.io,
     bound.requestRecovery,
-    { cwd: process.cwd(), env: {} },
+    { enhancementPause: bound.enhancementPause, cwd: process.cwd(), env: {} },
     {},
   );
   await instance.startMonitoring("known");
@@ -264,7 +269,7 @@ await test("Host input errors propagate and a retry can use the same observation
   const instance = await createEnhancement(
     bound.io,
     bound.requestRecovery,
-    { cwd: process.cwd(), env: {} },
+    { enhancementPause: bound.enhancementPause, cwd: process.cwd(), env: {} },
     {},
   );
   await instance.startMonitoring("known");
@@ -294,13 +299,21 @@ await test("two Hosts keep distinct GUIDs and exact conversation bindings", asyn
   const a = await createEnhancement(
     first.io,
     first.requestRecovery,
-    { cwd: process.cwd(), env: {} },
+    {
+      enhancementPause: boundCapabilities().enhancementPause,
+      cwd: process.cwd(),
+      env: {},
+    },
     {},
   );
   const b = await createEnhancement(
     second.io,
     second.requestRecovery,
-    { cwd: process.cwd(), env: {} },
+    {
+      enhancementPause: boundCapabilities().enhancementPause,
+      cwd: process.cwd(),
+      env: {},
+    },
     {},
   );
   await a.startMonitoring("first");
@@ -339,7 +352,7 @@ await test("assignment replacement and bound turn start invalidate pending snaps
     const instance = await createEnhancement(
       bound.io,
       bound.requestRecovery,
-      { cwd: process.cwd(), env: {} },
+      { enhancementPause: bound.enhancementPause, cwd: process.cwd(), env: {} },
       {},
     );
     instance.onAssignment({
@@ -404,7 +417,7 @@ await test("marker-like model output, other commands and unrelated turns never e
   const instance = await createEnhancement(
     bound.io,
     bound.requestRecovery,
-    { cwd: process.cwd(), env: {} },
+    { enhancementPause: bound.enhancementPause, cwd: process.cwd(), env: {} },
     {},
   );
   await instance.startMonitoring("known");
@@ -436,7 +449,7 @@ await test("stop before input dispatch cancels the queued marker round", async (
   const instance = await createEnhancement(
     bound.io,
     bound.requestRecovery,
-    { cwd: process.cwd(), env: {} },
+    { enhancementPause: bound.enhancementPause, cwd: process.cwd(), env: {} },
     {},
   );
   await instance.startMonitoring("known");
@@ -452,7 +465,7 @@ await test("overlapping waits retain separate deadlines while sharing marker inp
   const instance = await createEnhancement(
     bound.io,
     bound.requestRecovery,
-    { cwd: process.cwd(), env: {} },
+    { enhancementPause: bound.enhancementPause, cwd: process.cwd(), env: {} },
     { readyTimeout: 3 },
   );
   await instance.startMonitoring("known");

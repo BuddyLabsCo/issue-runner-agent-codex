@@ -23,7 +23,7 @@ await test("invalid loaded-thread pages reject readiness without guessing and al
     const instance = await createEnhancement(
       bound.io,
       bound.requestRecovery,
-      { cwd: process.cwd(), env: {} },
+      { enhancementPause: bound.enhancementPause, cwd: process.cwd(), env: {} },
       {},
     );
     try {
@@ -88,7 +88,7 @@ await test("GUID detection stops rounds while delayed binding and its current-st
   const instance = await createEnhancement(
     bound.io,
     bound.requestRecovery,
-    { cwd: process.cwd(), env: {} },
+    { enhancementPause: bound.enhancementPause, cwd: process.cwd(), env: {} },
     {},
   );
   try {
@@ -145,7 +145,7 @@ await test("a discovered conversation retries failed binding through the same re
   const instance = await createEnhancement(
     bound.io,
     bound.requestRecovery,
-    { cwd: process.cwd(), env: {} },
+    { enhancementPause: bound.enhancementPause, cwd: process.cwd(), env: {} },
     {},
   );
   try {
@@ -203,7 +203,7 @@ await test("matching notifications cannot hide a failed subscription or initial 
     const instance = await createEnhancement(
       bound.io,
       bound.requestRecovery,
-      { cwd: process.cwd(), env: {} },
+      { enhancementPause: bound.enhancementPause, cwd: process.cwd(), env: {} },
       {},
     );
     try {

@@ -44,7 +44,7 @@ for (const rpcError of [
     const instance = await createEnhancement(
       bound.io,
       bound.requestRecovery,
-      { cwd: process.cwd(), env: {} },
+      { enhancementPause: bound.enhancementPause, cwd: process.cwd(), env: {} },
       {},
     );
     try {
@@ -125,7 +125,7 @@ await test("persistent history failures retain a redacted timeout cause and do n
   const instance = await createEnhancement(
     bound.io,
     bound.requestRecovery,
-    { cwd: process.cwd(), env: {} },
+    { enhancementPause: bound.enhancementPause, cwd: process.cwd(), env: {} },
     { readyTimeout: 3 },
   );
   try {
@@ -185,7 +185,7 @@ await test("successful but malformed candidate history still rejects readiness",
     const instance = await createEnhancement(
       bound.io,
       bound.requestRecovery,
-      { cwd: process.cwd(), env: {} },
+      { enhancementPause: bound.enhancementPause, cwd: process.cwd(), env: {} },
       {},
     );
     try {
@@ -208,7 +208,7 @@ await test("loaded-thread enumeration errors still reject readiness", async (t) 
   const instance = await createEnhancement(
     bound.io,
     bound.requestRecovery,
-    { cwd: process.cwd(), env: {} },
+    { enhancementPause: bound.enhancementPause, cwd: process.cwd(), env: {} },
     {},
   );
   try {
@@ -240,7 +240,7 @@ await test("a late candidate read failure after stop cannot inspect another cand
   const instance = await createEnhancement(
     bound.io,
     bound.requestRecovery,
-    { cwd: process.cwd(), env: {} },
+    { enhancementPause: bound.enhancementPause, cwd: process.cwd(), env: {} },
     {},
   );
   try {

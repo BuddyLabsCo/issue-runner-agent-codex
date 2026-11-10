@@ -20,7 +20,11 @@ await test("observation retries every ten seconds without a business budget or d
   const instance = await createEnhancement(
     bound.io,
     bound.requestRecovery,
-    { cwd: process.cwd(), env: { RECONNECT_FIXTURE: "retained" } },
+    {
+      enhancementPause: bound.enhancementPause,
+      cwd: process.cwd(),
+      env: { RECONNECT_FIXTURE: "retained" },
+    },
     { retryLimit: 0, retryDelay: [0] },
   );
   t.after(() => instance.stop());
@@ -71,7 +75,7 @@ await test("reattachment stays unavailable until refreshed and retains the ref, 
   const instance = await createEnhancement(
     bound.io,
     bound.requestRecovery,
-    { cwd: process.cwd(), env: {} },
+    { enhancementPause: bound.enhancementPause, cwd: process.cwd(), env: {} },
     { retryLimit: 0 },
   );
   t.after(() => instance.stop());
@@ -158,7 +162,11 @@ await test("transport loss during reattachment prints one reconnect failure and 
   const instance = await createEnhancement(
     boundCapabilities().io,
     boundCapabilities().requestRecovery,
-    { cwd: process.cwd(), env: {} },
+    {
+      enhancementPause: boundCapabilities().enhancementPause,
+      cwd: process.cwd(),
+      env: {},
+    },
     {},
   );
   t.after(() => instance.stop());
@@ -193,7 +201,7 @@ await test("a stale refresh cannot restore observation after notifications arriv
   const instance = await createEnhancement(
     bound.io,
     bound.requestRecovery,
-    { cwd: process.cwd(), env: {} },
+    { enhancementPause: bound.enhancementPause, cwd: process.cwd(), env: {} },
     { retryLimit: 0 },
   );
   t.after(() => instance.stop());
@@ -249,7 +257,11 @@ await test("failed subscription or snapshot refresh retries after ten seconds wi
       const instance = await createEnhancement(
         boundCapabilities().io,
         boundCapabilities().requestRecovery,
-        { cwd: process.cwd(), env: {} },
+        {
+          enhancementPause: boundCapabilities().enhancementPause,
+          cwd: process.cwd(),
+          env: {},
+        },
         { retryLimit: 0 },
       );
       t.after(() => instance.stop());
@@ -319,7 +331,7 @@ await test("reconnection before GUID discovery restores availability without ado
   const instance = await createEnhancement(
     bound.io,
     bound.requestRecovery,
-    { cwd: process.cwd(), env: {} },
+    { enhancementPause: bound.enhancementPause, cwd: process.cwd(), env: {} },
     { retryLimit: 0 },
   );
   t.after(() => instance.stop());

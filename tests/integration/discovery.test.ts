@@ -55,7 +55,7 @@ await test("discovers the GUID's enclosing loaded thread across same-cwd threads
   const instance = await createEnhancement(
     bound.io,
     bound.requestRecovery,
-    { cwd: process.cwd(), env: {} },
+    { enhancementPause: bound.enhancementPause, cwd: process.cwd(), env: {} },
     {},
   );
   try {
@@ -113,7 +113,7 @@ await test("delayed discovery keeps two-second rounds and stops enumeration afte
   const instance = await createEnhancement(
     bound.io,
     bound.requestRecovery,
-    { cwd: process.cwd(), env: {} },
+    { enhancementPause: bound.enhancementPause, cwd: process.cwd(), env: {} },
     {},
   );
   try {
@@ -177,7 +177,7 @@ await test("discovery notices evidence while a Host round is pending and waits f
   const instance = await createEnhancement(
     bound.io,
     bound.requestRecovery,
-    { cwd: process.cwd(), env: {} },
+    { enhancementPause: bound.enhancementPause, cwd: process.cwd(), env: {} },
     { readyTimeout: 5 },
   );
   try {
@@ -239,7 +239,7 @@ await test("discovery timeout retries the same Tab and GUID without relaunching"
   const instance = await createEnhancement(
     bound.io,
     bound.requestRecovery,
-    { cwd: process.cwd(), env: {} },
+    { enhancementPause: bound.enhancementPause, cwd: process.cwd(), env: {} },
     { readyTimeout: 3 },
   );
   try {
@@ -296,7 +296,7 @@ await test("discovery does not lose a notification during an in-flight enumerati
   const instance = await createEnhancement(
     bound.io,
     bound.requestRecovery,
-    { cwd: process.cwd(), env: {} },
+    { enhancementPause: bound.enhancementPause, cwd: process.cwd(), env: {} },
     {},
   );
   try {
@@ -344,13 +344,21 @@ await test("distinct Tabs discover their own GUIDs among the same loaded threads
   const a = await createEnhancement(
     first.io,
     first.requestRecovery,
-    { cwd: process.cwd(), env: {} },
+    {
+      enhancementPause: boundCapabilities().enhancementPause,
+      cwd: process.cwd(),
+      env: {},
+    },
     {},
   );
   const b = await createEnhancement(
     second.io,
     second.requestRecovery,
-    { cwd: process.cwd(), env: {} },
+    {
+      enhancementPause: boundCapabilities().enhancementPause,
+      cwd: process.cwd(),
+      env: {},
+    },
     {},
   );
   try {
@@ -400,7 +408,7 @@ await test("stop during enumeration or inspection cancels discovery without adop
     const instance = await createEnhancement(
       bound.io,
       bound.requestRecovery,
-      { cwd: process.cwd(), env: {} },
+      { enhancementPause: bound.enhancementPause, cwd: process.cwd(), env: {} },
       {},
     );
     await instance.startMonitoring();

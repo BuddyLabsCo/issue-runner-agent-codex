@@ -36,7 +36,7 @@ for (const status of ["completed", "inProgress"]) {
     const instance = await createEnhancement(
       bound.io,
       bound.requestRecovery,
-      { cwd: process.cwd(), env: {} },
+      { enhancementPause: bound.enhancementPause, cwd: process.cwd(), env: {} },
       {},
     );
     try {
@@ -91,7 +91,7 @@ await test("a status notification during binding preserves initial history and r
   const instance = await createEnhancement(
     bound.io,
     bound.requestRecovery,
-    { cwd: process.cwd(), env: {} },
+    { enhancementPause: bound.enhancementPause, cwd: process.cwd(), env: {} },
     {},
   );
   try {
@@ -151,7 +151,11 @@ await test("failed binding initialization can be retried for the same exact conv
     const instance = await createEnhancement(
       boundCapabilities().io,
       boundCapabilities().requestRecovery,
-      { cwd: process.cwd(), env: {} },
+      {
+        enhancementPause: boundCapabilities().enhancementPause,
+        cwd: process.cwd(),
+        env: {},
+      },
       {},
     );
     try {
@@ -207,7 +211,11 @@ await test("same-ref monitoring calls wait for the pending subscription and init
   const instance = await createEnhancement(
     boundCapabilities().io,
     boundCapabilities().requestRecovery,
-    { cwd: process.cwd(), env: {} },
+    {
+      enhancementPause: boundCapabilities().enhancementPause,
+      cwd: process.cwd(),
+      env: {},
+    },
     {},
   );
   try {

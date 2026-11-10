@@ -19,7 +19,7 @@ function assemble(
   requestRecovery: RequestRecovery,
   client: NativeClient,
   options: Options,
-  cwd: string,
+  context: EnhancementContext,
 ): Enhancement {
   const observation = new Observation(client);
   const readiness = new Readiness(
@@ -31,9 +31,10 @@ function assemble(
   );
   const recovery = new ErrorRecovery(
     requestRecovery,
+    (id, message) => context.enhancementPause(id, message),
     observation,
     options,
-    cwd,
+    context.cwd,
   );
   let sessionid: string | undefined;
   let stopped = false;
@@ -88,6 +89,10 @@ function assemble(
         failed("assignment operation failed", error);
         if (!sessionid) throw error;
       }
+    },
+    enhancementResume(assignmentId) {
+      recovery.resume(assignmentId);
+      return Promise.resolve();
     },
     stop() {
       if (stopping) return stopping;
@@ -150,7 +155,7 @@ export async function createEnhancement(
   const client = await connectNative(context, log);
   try {
     await preflight(client, context);
-    return assemble(io, requestRecovery, client, options, context.cwd);
+    return assemble(io, requestRecovery, client, options, context);
   } catch (error) {
     client.log.error("preflight failed", error);
     await client.close().catch((error: unknown) => {
