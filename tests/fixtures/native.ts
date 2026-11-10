@@ -23,6 +23,7 @@ export function boundCapabilities() {
   const inputs: string[] = [];
   const keys: (readonly string[])[] = [];
   const recoveryIds: string[] = [];
+  const pauses: { assignmentId: string; message: string }[] = [];
   const recovery: { request: RequestRecovery } = {
     request: (id) => {
       recoveryIds.push(id);
@@ -42,6 +43,10 @@ export function boundCapabilities() {
   };
   return {
     io,
+    enhancementPause: (assignmentId: string, message: string) => {
+      pauses.push({ assignmentId, message });
+    },
+    pauses,
     recovery,
     requestRecovery: (id: string) => recovery.request(id),
     recoveryIds,

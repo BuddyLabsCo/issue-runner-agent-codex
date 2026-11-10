@@ -40,7 +40,7 @@ await test("operation logging through enhancement lifecycle", async (suite) => {
     fs.rmSync(root, { recursive: true, force: true });
   });
   const cwd = join(root, "worktrees", "run", "ticket");
-  const context = { cwd, env: {} };
+  const context = { enhancementPause: assert.fail, cwd, env: {} };
   const records = () =>
     fs.readdirSync(join(root, "logs")).flatMap((name) =>
       fs

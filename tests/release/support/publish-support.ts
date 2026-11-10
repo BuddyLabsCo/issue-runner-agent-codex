@@ -36,8 +36,8 @@ export const readyPackage = {
   },
   files: {
     "dist/index.js":
-      "export const contractVersion = 2; export function createEnhancement() {}\n",
-    "dist/index.d.ts": "export declare const contractVersion = 2;\n",
+      "export const contractVersion = 3; export function createEnhancement() {}\n",
+    "dist/index.d.ts": "export declare const contractVersion = 3;\n",
     // This substitute verifies packed runtime bytes; the real package test also checks declarations.
     "scripts/release-accept.mjs": [
       'import assert from "node:assert/strict";',
@@ -54,7 +54,7 @@ export const readyPackage = {
       "}",
       'assert.ok(source, "Missing packed runtime");',
       'const enhancement = await import("data:text/javascript;base64," + Buffer.from(source).toString("base64"));',
-      "assert.equal(enhancement.contractVersion, 2);",
+      "assert.equal(enhancement.contractVersion, 3);",
       'assert.equal(typeof enhancement.createEnhancement, "function");',
       "",
     ].join("\n"),

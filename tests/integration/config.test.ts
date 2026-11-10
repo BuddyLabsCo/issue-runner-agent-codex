@@ -1,3 +1,4 @@
+import { boundCapabilities } from "../fixtures/native.ts";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { TerminalIO, EnhancementModule } from "issue-runner-core/terminal";
@@ -11,7 +12,7 @@ const io: TerminalIO = {
 };
 
 await test("exports the approved Core contract and rejects invalid options before native startup", async () => {
-  assert.equal(module.contractVersion, 2);
+  assert.equal(module.contractVersion, 3);
   for (const config of [
     null,
     [],
@@ -36,7 +37,11 @@ await test("exports the approved Core contract and rejects invalid options befor
       module.createEnhancement(
         io,
         () => Promise.resolve(),
-        { cwd: process.cwd(), env: {} },
+        {
+          enhancementPause: boundCapabilities().enhancementPause,
+          cwd: process.cwd(),
+          env: {},
+        },
         config,
       ),
       /enhancements/,
@@ -56,7 +61,11 @@ await test("explicit null option values and sparse delays are rejected instead o
       module.createEnhancement(
         io,
         () => Promise.resolve(),
-        { cwd: process.cwd(), env: {} },
+        {
+          enhancementPause: boundCapabilities().enhancementPause,
+          cwd: process.cwd(),
+          env: {},
+        },
         config,
       ),
       /enhancements/,

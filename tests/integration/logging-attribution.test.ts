@@ -69,7 +69,7 @@ await test("logging attribution across Assignment replacement", async (suite) =>
       const instance = await createEnhancement(
         bound.io,
         bound.requestRecovery,
-        { cwd, env: {} },
+        { enhancementPause: bound.enhancementPause, cwd, env: {} },
         { logLevel: "info", retryLimit: 0 },
       );
       t.after(() => instance.stop());
@@ -128,7 +128,7 @@ await test("logging attribution across Assignment replacement", async (suite) =>
       const instance = await createEnhancement(
         bound.io,
         bound.requestRecovery,
-        { cwd, env: {} },
+        { enhancementPause: bound.enhancementPause, cwd, env: {} },
         { logLevel: "info", retryLimit: 0 },
       );
       t.after(() => instance.stop());

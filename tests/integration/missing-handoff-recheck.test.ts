@@ -10,7 +10,7 @@ import {
 } from "../fixtures/native.ts";
 import { recoveryFixture } from "../fixtures/recovery.ts";
 
-await test("a full human-action reply discovered by the final snapshot suppresses input; a later turn uses its own output", async (t) => {
+await test("a full human-action reply discovered by the final snapshot suppresses input; a later turn stays paused until resume", async (t) => {
   const { instance, state, native, bound, stderr } = await recoveryFixture(t, {
     retryLimit: 1,
     handoffRecoveryDelaySeconds: 2,
@@ -36,7 +36,10 @@ await test("a full human-action reply discovered by the final snapshot suppresse
   t.mock.timers.tick(1);
   await flush();
   assert.equal(bound.recoveries, 0);
-  assert.deepEqual(stderr, ["[codex] sessionref=known ACTION REQUIRED!!!\n"]);
+  assert.deepEqual(stderr, []);
+  assert.deepEqual(bound.pauses, [
+    { assignmentId: "assignment-1", message: "ACTION REQUIRED!!!" },
+  ]);
   native.notify("thread/status/changed", {
     threadId: "known",
     status: { type: "idle" },
@@ -44,7 +47,10 @@ await test("a full human-action reply discovered by the final snapshot suppresse
   await flush();
   t.mock.timers.tick(20_000);
   await flush();
-  assert.deepEqual(stderr, ["[codex] sessionref=known ACTION REQUIRED!!!\n"]);
+  assert.deepEqual(stderr, []);
+  assert.deepEqual(bound.pauses, [
+    { assignmentId: "assignment-1", message: "ACTION REQUIRED!!!" },
+  ]);
   state.snapshot.turns.push({
     id: "later",
     status: "interrupted",
@@ -68,6 +74,11 @@ await test("a full human-action reply discovered by the final snapshot suppresse
     threadId: "known",
     turn: state.snapshot.turns.at(-1),
   });
+  await flush();
+  t.mock.timers.tick(20_000);
+  await flush();
+  assert.equal(bound.recoveries, 0);
+  await instance.enhancementResume("assignment-1");
   await flush();
   t.mock.timers.tick(1_999);
   await flush();
@@ -107,7 +118,11 @@ await test("missing-handoff file and Host failures propagate through the lifecyc
       const instance = await createEnhancement(
         bound.io,
         bound.requestRecovery,
-        { cwd: process.cwd(), env: {} },
+        {
+          enhancementPause: bound.enhancementPause,
+          cwd: process.cwd(),
+          env: {},
+        },
         { handoffRecoveryDelaySeconds: 2 },
       );
       t.mock.timers.enable({ apis: ["setTimeout"] });

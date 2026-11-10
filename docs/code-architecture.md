@@ -34,13 +34,13 @@ Keep policy with the feature that owns it; keep native I/O behind `codex/`.
 
 | Owner | Responsibilities |
 | --- | --- |
-| `index.ts` | Export only `contractVersion = 2` and `createEnhancement`. |
-| `enhancement.ts` | Validate configuration, connect, await preflight, assemble per-Tab instances, and expose the four lifecycle methods. Coordinate immediate cancellation and retryable resource cleanup. |
+| `index.ts` | Export only `contractVersion = 3` and `createEnhancement`. |
+| `enhancement.ts` | Validate configuration, connect, await preflight, assemble per-Tab instances, and expose the five lifecycle methods. Coordinate immediate cancellation and retryable resource cleanup. |
 | `config.ts` | Validate shared enhancement options and apply defaults. Configuration-field explanations live in Core's template comments. |
 | `preflight/` | Establish and verify primary checkout trust, replacing an explicit `untrusted` value when necessary. Preserve separate distrust overrides for the task cwd or Worktree, disabled hooks, unrelated settings and persisted writes. Trust current hook hashes and verify readback. |
 | `session/` | Submit GUID markers through bound I/O, identify the enclosing native conversation, and correlate the bootstrap prompt with its model turn start. Own readiness deadlines and retry evidence. |
 | `monitor/` | Bind one exact native ref, retain Assignment ID and expected file together, filter notifications, refresh snapshots and reconnect. Invalidate stale asynchronous observations on replacement, new turns, disconnect and stop. |
-| `recovery/` | Decide eligibility from current facts, complete final replies and file presence. Own separate budgets, delays, cancellation and originating-Assignment rechecks before calling `requestRecovery(id)`. |
+| `recovery/` | Decide eligibility from current facts, complete final replies and file presence. Own Assignment Enhancement Pause, processed reply identity, matching resume, separate budgets, delays, cancellation and originating-Assignment rechecks before calling `requestRecovery(id)`. |
 | `codex/` | Start/connect to the shared daemon, implement framed WebSocket RPC over the owned proxy, configuration/hook operations, Git checkout discovery and file existence checks. Release only owned connections and proxies. |
 | `diagnostics.ts` | Format enhancement notices without native payloads, credentials or transport close reasons. |
 | `scripts/release/` | Own release identity, candidate packing and publication recovery independently of enhancement runtime code. |

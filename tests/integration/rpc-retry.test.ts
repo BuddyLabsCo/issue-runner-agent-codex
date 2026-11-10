@@ -1,3 +1,4 @@
+import { boundCapabilities } from "../fixtures/native.ts";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { connectNative } from "../../src/codex/client.ts";
@@ -12,7 +13,11 @@ for (const method of [
   for (const failures of [1, 2, 3]) {
     await test(`${method} retries service errors up to three attempts (${failures} failures)`, async (t) => {
       const native = await nativeFixture(t);
-      const client = await connectNative({ cwd: process.cwd(), env: {} });
+      const client = await connectNative({
+        enhancementPause: boundCapabilities().enhancementPause,
+        cwd: process.cwd(),
+        env: {},
+      });
       t.after(() => client.close());
       t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
       let calls = 0;
@@ -53,7 +58,11 @@ for (const method of [
 for (const mode of ["stop", "disconnect", "replacement"]) {
   await test(`${mode} cancels retries from the old connection`, async (t) => {
     const native = await nativeFixture(t);
-    const client = await connectNative({ cwd: process.cwd(), env: {} });
+    const client = await connectNative({
+      enhancementPause: boundCapabilities().enhancementPause,
+      cwd: process.cwd(),
+      env: {},
+    });
     t.after(() => client.close());
     t.mock.timers.enable({ apis: ["setTimeout"] });
     native.hooksHandler = () => {
@@ -80,7 +89,11 @@ for (const mode of ["stop", "disconnect", "replacement"]) {
 
 await test("timeouts use fresh IDs and late replies cannot settle parallel requests", async (t) => {
   const native = await nativeFixture(t);
-  const client = await connectNative({ cwd: process.cwd(), env: {} });
+  const client = await connectNative({
+    enhancementPause: boundCapabilities().enhancementPause,
+    cwd: process.cwd(),
+    env: {},
+  });
   t.after(() => client.close());
   t.mock.timers.enable({ apis: ["setTimeout"] });
   const releases: ((result: unknown) => void)[] = [];
@@ -110,7 +123,11 @@ await test("timeouts use fresh IDs and late replies cannot settle parallel reque
 for (const method of ["initialize", "config/value/write", "thread/resume"]) {
   await test(`${method} is never retried`, async (t) => {
     const native = await nativeFixture(t);
-    const client = await connectNative({ cwd: process.cwd(), env: {} });
+    const client = await connectNative({
+      enhancementPause: boundCapabilities().enhancementPause,
+      cwd: process.cwd(),
+      env: {},
+    });
     t.after(() => client.close());
     t.mock.timers.enable({ apis: ["setTimeout"] });
     native.handler = native.configHandler = () => {
@@ -128,7 +145,11 @@ for (const method of ["initialize", "config/value/write", "thread/resume"]) {
 
 await test("persistent timeouts stop after three ten-second attempts", async (t) => {
   const native = await nativeFixture(t);
-  const client = await connectNative({ cwd: process.cwd(), env: {} });
+  const client = await connectNative({
+    enhancementPause: boundCapabilities().enhancementPause,
+    cwd: process.cwd(),
+    env: {},
+  });
   t.after(() => client.close());
   t.mock.timers.enable({ apis: ["setTimeout"] });
   native.handler = () => new Promise(() => undefined);

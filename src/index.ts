@@ -1,2 +1,2 @@
-export const contractVersion = 2;
+export const contractVersion = 3;
 export { createEnhancement } from "./enhancement.ts";

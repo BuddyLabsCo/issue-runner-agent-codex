@@ -23,7 +23,7 @@ await test("stop cancels a pending bootstrap wait and awaits issued input withou
   const instance = await createEnhancement(
     bound.io,
     bound.requestRecovery,
-    { cwd: process.cwd(), env: {} },
+    { enhancementPause: bound.enhancementPause, cwd: process.cwd(), env: {} },
     {},
   );
   await instance.startMonitoring("known");
@@ -68,7 +68,7 @@ await test("overlapping readiness waits share one bootstrap and preserve the rem
   const instance = await createEnhancement(
     bound.io,
     bound.requestRecovery,
-    { cwd: process.cwd(), env: {} },
+    { enhancementPause: bound.enhancementPause, cwd: process.cwd(), env: {} },
     { readyTimeout: 3 },
   );
   t.after(() => instance.stop());
@@ -123,7 +123,7 @@ await test("bootstrap input rejection propagates unchanged and the same instance
   const instance = await createEnhancement(
     bound.io,
     bound.requestRecovery,
-    { cwd: process.cwd(), env: {} },
+    { enhancementPause: bound.enhancementPause, cwd: process.cwd(), env: {} },
     {},
   );
   t.after(() => instance.stop());

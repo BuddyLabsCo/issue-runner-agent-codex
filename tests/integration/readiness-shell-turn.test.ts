@@ -15,7 +15,7 @@ await test("bootstrap waits for the GUID shell turn to end, ignoring unrelated c
   const instance = await createEnhancement(
     bound.io,
     bound.requestRecovery,
-    { cwd: process.cwd(), env: {} },
+    { enhancementPause: bound.enhancementPause, cwd: process.cwd(), env: {} },
     {},
   );
   t.after(() => instance.stop());
@@ -91,7 +91,7 @@ for (const status of ["completed", "failed", "interrupted", "inProgress"]) {
     const instance = await createEnhancement(
       bound.io,
       bound.requestRecovery,
-      { cwd: process.cwd(), env: {} },
+      { enhancementPause: bound.enhancementPause, cwd: process.cwd(), env: {} },
       {},
     );
     t.after(() => instance.stop());
@@ -117,7 +117,7 @@ await test("waiting for a shell turn preserves the readiness deadline and ignore
   const instance = await createEnhancement(
     bound.io,
     bound.requestRecovery,
-    { cwd: process.cwd(), env: {} },
+    { enhancementPause: bound.enhancementPause, cwd: process.cwd(), env: {} },
     { readyTimeout: 3 },
   );
   t.after(() => instance.stop());

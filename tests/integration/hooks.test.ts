@@ -20,7 +20,7 @@ await test("factory trusts a newly added hook by its current hash before startup
   const instance = await createEnhancement(
     bound.io,
     bound.requestRecovery,
-    { cwd: process.cwd(), env: {} },
+    { enhancementPause: bound.enhancementPause, cwd: process.cwd(), env: {} },
     {},
   );
   assert.deepEqual(native.configuration.hooks, {
@@ -47,7 +47,11 @@ await test("factory refreshes changed hashes without enabling disabled hooks or 
     const instance = await createEnhancement(
       boundCapabilities().io,
       boundCapabilities().requestRecovery,
-      { cwd: process.cwd(), env: {} },
+      {
+        enhancementPause: boundCapabilities().enhancementPause,
+        cwd: process.cwd(),
+        env: {},
+      },
       {},
     );
     await instance.stop();
@@ -86,7 +90,11 @@ await test("factory queries already-trusted and managed hooks only once", async 
   const instance = await createEnhancement(
     boundCapabilities().io,
     boundCapabilities().requestRecovery,
-    { cwd: process.cwd(), env: {} },
+    {
+      enhancementPause: boundCapabilities().enhancementPause,
+      cwd: process.cwd(),
+      env: {},
+    },
     {},
   );
   assert.deepEqual(native.configuration, before);
@@ -109,7 +117,11 @@ await test(
     native.configuration.projects = {};
     native.hooks.push(hook());
     const bound = boundCapabilities();
-    const context = { cwd: join(native.primary, "linked task"), env: {} };
+    const context = {
+      enhancementPause: bound.enhancementPause,
+      cwd: join(native.primary, "linked task"),
+      env: {},
+    };
     const list = native.hooksHandler;
     let release!: () => void;
     let reads = 0;
@@ -187,7 +199,11 @@ for (const phase of ["list", "write", "readback"] as const) {
     const instance = await createEnhancement(
       boundCapabilities().io,
       boundCapabilities().requestRecovery,
-      { cwd: process.cwd(), env: {} },
+      {
+        enhancementPause: boundCapabilities().enhancementPause,
+        cwd: process.cwd(),
+        env: {},
+      },
       {},
     );
     assert.deepEqual(native.configuration.hooks, {
@@ -210,7 +226,11 @@ for (const failure of [
     const other = await createEnhancement(
       boundCapabilities().io,
       boundCapabilities().requestRecovery,
-      { cwd: process.cwd(), env: {} },
+      {
+        enhancementPause: boundCapabilities().enhancementPause,
+        cwd: process.cwd(),
+        env: {},
+      },
       {},
     );
     native.hooks.push(hook());
@@ -246,7 +266,7 @@ for (const failure of [
     const instance = await createEnhancement(
       bound.io,
       bound.requestRecovery,
-      { cwd: process.cwd(), env: {} },
+      { enhancementPause: bound.enhancementPause, cwd: process.cwd(), env: {} },
       {},
     );
     await flush();
@@ -324,7 +344,7 @@ for (const [name, changes] of [
     const instance = await createEnhancement(
       bound.io,
       bound.requestRecovery,
-      { cwd: process.cwd(), env: {} },
+      { enhancementPause: bound.enhancementPause, cwd: process.cwd(), env: {} },
       {},
     );
     assert.deepEqual(bound.inputs, []);
@@ -397,7 +417,11 @@ for (const [name, response] of [
     const instance = await createEnhancement(
       boundCapabilities().io,
       boundCapabilities().requestRecovery,
-      { cwd: process.cwd(), env: {} },
+      {
+        enhancementPause: boundCapabilities().enhancementPause,
+        cwd: process.cwd(),
+        env: {},
+      },
       {},
     );
     await instance.stop();

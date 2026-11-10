@@ -23,7 +23,7 @@ await test("log creation failure preserves workflow and diagnostic even without 
     const instance = await createEnhancement(
       bound.io,
       bound.requestRecovery,
-      { cwd: process.cwd(), env: {} },
+      { enhancementPause: bound.enhancementPause, cwd: process.cwd(), env: {} },
       { logLevel: "info" },
     );
     await instance.stop();

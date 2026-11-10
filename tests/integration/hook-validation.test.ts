@@ -40,7 +40,7 @@ async function assertReadyWithHookFailure(
   const instance = await createEnhancement(
     bound.io,
     bound.requestRecovery,
-    { cwd: process.cwd(), env: {} },
+    { enhancementPause: bound.enhancementPause, cwd: process.cwd(), env: {} },
     {},
   );
   t.after(() => instance.stop());

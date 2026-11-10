@@ -12,7 +12,7 @@ await test("native initialization advertises the 0.1.0 release", async (t) => {
   const instance = await createEnhancement(
     bound.io,
     bound.requestRecovery,
-    { cwd: process.cwd(), env: {} },
+    { enhancementPause: bound.enhancementPause, cwd: process.cwd(), env: {} },
     {},
   );
   await instance.stop();
@@ -31,7 +31,11 @@ await test("awaited factory initialization failure releases its partial connecti
     createEnhancement(
       boundCapabilities().io,
       boundCapabilities().requestRecovery,
-      { cwd: process.cwd(), env: {} },
+      {
+        enhancementPause: boundCapabilities().enhancementPause,
+        cwd: process.cwd(),
+        env: {},
+      },
       {},
     ),
     /RPC request failed/,
@@ -61,7 +65,7 @@ await test("stop rejects an in-flight bound snapshot and late results cannot res
   const instance = await createEnhancement(
     bound.io,
     bound.requestRecovery,
-    { cwd: process.cwd(), env: {} },
+    { enhancementPause: bound.enhancementPause, cwd: process.cwd(), env: {} },
     {},
   );
   const starting = assert.rejects(
@@ -86,7 +90,7 @@ await test("the default deadline is twenty seconds and zero recovery settings ac
   const instance = await createEnhancement(
     bound.io,
     bound.requestRecovery,
-    { cwd: process.cwd(), env: {} },
+    { enhancementPause: bound.enhancementPause, cwd: process.cwd(), env: {} },
     {
       retryLimit: 0,
       retryDelay: [0],
@@ -117,7 +121,11 @@ await test("repeatable stop waits for its owned proxy to close", async (t) => {
   const instance = await createEnhancement(
     boundCapabilities().io,
     boundCapabilities().requestRecovery,
-    { cwd: process.cwd(), env: {} },
+    {
+      enhancementPause: boundCapabilities().enhancementPause,
+      cwd: process.cwd(),
+      env: {},
+    },
     {},
   );
   const proxy = native.proxies[0]!;
@@ -147,7 +155,7 @@ await test("stop waits for deferred close when proxy kill returns false", async 
   const instance = await createEnhancement(
     bound.io,
     bound.requestRecovery,
-    { cwd: process.cwd(), env: {} },
+    { enhancementPause: bound.enhancementPause, cwd: process.cwd(), env: {} },
     {},
   );
   const proxy = native.proxies[0]!;
@@ -200,7 +208,11 @@ await test("an already-closed proxy needs no kill on repeated stop", async (t) =
   const instance = await createEnhancement(
     boundCapabilities().io,
     boundCapabilities().requestRecovery,
-    { cwd: process.cwd(), env: {} },
+    {
+      enhancementPause: boundCapabilities().enhancementPause,
+      cwd: process.cwd(),
+      env: {},
+    },
     {},
   );
   const proxy = native.proxies[0]!;
@@ -216,7 +228,11 @@ await test("large finite readiness deadlines do not overflow native timers", asy
   const instance = await createEnhancement(
     boundCapabilities().io,
     boundCapabilities().requestRecovery,
-    { cwd: process.cwd(), env: {} },
+    {
+      enhancementPause: boundCapabilities().enhancementPause,
+      cwd: process.cwd(),
+      env: {},
+    },
     { readyTimeout: Number.MAX_VALUE },
   );
   await instance.startMonitoring();
@@ -276,7 +292,11 @@ await test("daemon startup timeout survives failed starter release without stopp
         createEnhancement(
           bound.io,
           bound.requestRecovery,
-          { cwd: process.cwd(), env: {} },
+          {
+            enhancementPause: bound.enhancementPause,
+            cwd: process.cwd(),
+            env: {},
+          },
           {},
         ),
         { message: "Codex daemon startup timed out" },

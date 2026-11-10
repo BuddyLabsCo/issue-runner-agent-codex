@@ -35,7 +35,7 @@ export async function recoveryFixture(t: TestContext, config: unknown = {}) {
   const instance = await createEnhancement(
     bound.io,
     bound.requestRecovery,
-    { cwd, env: {} },
+    { enhancementPause: bound.enhancementPause, cwd, env: {} },
     config,
   );
   t.after(() => instance.stop());

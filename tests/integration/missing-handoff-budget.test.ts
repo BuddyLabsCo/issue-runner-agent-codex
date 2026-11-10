@@ -71,8 +71,9 @@ await test("file appearance during human-action suppression resets the budget fo
   t.mock.timers.tick(20_000);
   await flush();
   assert.equal(bound.recoveries, 1);
-  assert.deepEqual(stderr.slice(2), [
-    "[codex] sessionref=known ACTION REQUIRED!!!\n",
+  assert.deepEqual(stderr.slice(2), []);
+  assert.deepEqual(bound.pauses, [
+    { assignmentId: "assignment-1", message: "ACTION REQUIRED!!!" },
   ]);
 
   files.delete(expectedFile);
@@ -85,6 +86,11 @@ await test("file appearance during human-action suppression resets the budget fo
     threadId: "known",
     turn: state.snapshot.turns[0],
   });
+  await flush();
+  t.mock.timers.tick(20_000);
+  await flush();
+  assert.equal(bound.recoveries, 1);
+  await instance.enhancementResume("assignment-1");
   await flush();
   t.mock.timers.tick(1_999);
   await flush();

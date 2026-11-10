@@ -36,7 +36,11 @@ await test("factory establishes trust when native configuration returns null pro
   const instance = await createEnhancement(
     boundCapabilities().io,
     boundCapabilities().requestRecovery,
-    { cwd: process.cwd(), env: {} },
+    {
+      enhancementPause: boundCapabilities().enhancementPause,
+      cwd: process.cwd(),
+      env: {},
+    },
     {},
   );
   assert.deepEqual(native.configuration.projects, {
@@ -89,7 +93,11 @@ await test("factory establishes effective trust despite an initial trust warning
     const instance = await createEnhancement(
       bound.io,
       bound.requestRecovery,
-      { cwd: native.primary, env: {} },
+      {
+        enhancementPause: bound.enhancementPause,
+        cwd: native.primary,
+        env: {},
+      },
       {},
     );
     await instance.stop();
@@ -142,7 +150,11 @@ for (const withTrustWarning of [false, true]) {
       const instance = await createEnhancement(
         boundCapabilities().io,
         boundCapabilities().requestRecovery,
-        { cwd: native.primary, env: {} },
+        {
+          enhancementPause: boundCapabilities().enhancementPause,
+          cwd: native.primary,
+          env: {},
+        },
         {},
       );
       await instance.stop();
@@ -176,7 +188,11 @@ for (const phase of ["config/read", "config/value/write"] as const) {
     const instance = await createEnhancement(
       boundCapabilities().io,
       boundCapabilities().requestRecovery,
-      { cwd: native.primary, env: {} },
+      {
+        enhancementPause: boundCapabilities().enhancementPause,
+        cwd: native.primary,
+        env: {},
+      },
       {},
     );
     assert.deepEqual(native.configuration.projects, {
@@ -210,7 +226,7 @@ await test("factory rejects a linked Worktree's explicit untrusted setting and d
     createEnhancement(
       bound.io,
       bound.requestRecovery,
-      { cwd: worktree, env: {} },
+      { enhancementPause: bound.enhancementPause, cwd: worktree, env: {} },
       {},
     ),
     /trust/,
@@ -233,7 +249,11 @@ for (const projects of [[], "invalid", 42]) {
       createEnhancement(
         boundCapabilities().io,
         boundCapabilities().requestRecovery,
-        { cwd: native.primary, env: {} },
+        {
+          enhancementPause: boundCapabilities().enhancementPause,
+          cwd: native.primary,
+          env: {},
+        },
         {},
       ),
       /Invalid Codex protocol object/,
@@ -264,7 +284,11 @@ for (const override of ["worktree", "cwd"] as const) {
       createEnhancement(
         boundCapabilities().io,
         boundCapabilities().requestRecovery,
-        { cwd, env: {} },
+        {
+          enhancementPause: boundCapabilities().enhancementPause,
+          cwd,
+          env: {},
+        },
         {},
       ),
       /explicitly untrusted/,
@@ -311,7 +335,11 @@ for (const initiallyTrusted of [false, true]) {
       createEnhancement(
         boundCapabilities().io,
         boundCapabilities().requestRecovery,
-        { cwd: native.primary, env: {} },
+        {
+          enhancementPause: boundCapabilities().enhancementPause,
+          cwd: native.primary,
+          env: {},
+        },
         {},
       ),
       /layer remains disabled/,
@@ -340,7 +368,11 @@ for (const status of ["ok", "okOverridden"]) {
     const instance = await createEnhancement(
       boundCapabilities().io,
       boundCapabilities().requestRecovery,
-      { cwd: process.cwd(), env: {} },
+      {
+        enhancementPause: boundCapabilities().enhancementPause,
+        cwd: process.cwd(),
+        env: {},
+      },
       {},
     );
     assert.deepEqual(native.configuration.hooks, {

@@ -16,7 +16,11 @@ await test("public binding cannot bypass pending reconnect initialization", asyn
       const instance = await createEnhancement(
         bound.io,
         bound.requestRecovery,
-        { cwd: process.cwd(), env: {} },
+        {
+          enhancementPause: bound.enhancementPause,
+          cwd: process.cwd(),
+          env: {},
+        },
         { retryLimit: 0 },
       );
       t.after(() => instance.stop());
@@ -69,7 +73,11 @@ await test("stop cancels each in-flight reattachment stage and ignores late resp
       const instance = await createEnhancement(
         bound.io,
         bound.requestRecovery,
-        { cwd: process.cwd(), env: {} },
+        {
+          enhancementPause: bound.enhancementPause,
+          cwd: process.cwd(),
+          env: {},
+        },
         {},
       );
       t.after(() => instance.stop());

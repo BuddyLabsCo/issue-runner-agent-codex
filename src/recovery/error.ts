@@ -1,5 +1,8 @@
 import type { Log, ScheduledLog } from "../codex/log.ts";
-import type { RequestRecovery } from "issue-runner-core/terminal";
+import type {
+  EnhancementContext,
+  RequestRecovery,
+} from "issue-runner-core/terminal";
 import { resolve } from "node:path";
 import { expectedFileExists } from "../codex/files.ts";
 import type { Options } from "../config.ts";
@@ -40,11 +43,14 @@ interface Pending extends Candidate {
 
 export class ErrorRecovery {
   private readonly requestRecovery: RequestRecovery;
+  private readonly enhancementPause: EnhancementContext["enhancementPause"];
   private readonly observation: Observation;
   private readonly options: Options;
   private readonly cwd: string;
   private readonly attempts = { error: 0, "missing-handoff": 0 };
   private assignment = 0;
+  private pausedAssignment: string | undefined;
+  private readonly processedReplies = new Set<string>();
   private pending: Pending | undefined;
   private submission: Promise<void> | undefined;
   private failure: { error: unknown } | undefined;
@@ -54,11 +60,13 @@ export class ErrorRecovery {
 
   constructor(
     requestRecovery: RequestRecovery,
+    enhancementPause: EnhancementContext["enhancementPause"],
     observation: Observation,
     options: Options,
     cwd: string,
   ) {
     this.requestRecovery = requestRecovery;
+    this.enhancementPause = enhancementPause;
     this.observation = observation;
     this.options = options;
     this.cwd = cwd;
@@ -110,19 +118,42 @@ export class ErrorRecovery {
     this.pending = undefined;
   }
 
-  private actionRequired(): boolean {
-    const reply = this.observation.thread?.turns
-      .at(-1)
-      ?.items.filter(
+  private pauseForAction(candidate: Candidate): void {
+    const turn = this.observation.thread?.turns.at(-1);
+    const reply = turn?.items
+      .filter(
         (item) =>
           item.type === "agentMessage" &&
           (item.phase == null || item.phase === "final_answer"),
       )
       .at(-1);
-    return (
-      typeof reply?.text === "string" &&
-      reply.text.trimStart().startsWith("[action required]")
-    );
+    if (
+      !turn ||
+      typeof reply?.text !== "string" ||
+      !reply.text.trimStart().startsWith("[action required]")
+    )
+      return;
+    const identity = JSON.stringify([
+      turn.id,
+      reply.id ?? turn.items.indexOf(reply),
+    ]);
+    if (this.processedReplies.has(identity)) return;
+    this.processedReplies.add(identity);
+    if (this.pausedAssignment !== undefined) return;
+    this.pausedAssignment = candidate.assignment.id;
+    this.cancel();
+    this.enhancementPause(candidate.assignment.id, "ACTION REQUIRED!!!");
+  }
+
+  resume(assignmentId: string): void {
+    if (
+      this.stopped ||
+      this.pausedAssignment !== assignmentId ||
+      this.observation.assignment?.id !== assignmentId
+    )
+      return;
+    this.pausedAssignment = undefined;
+    this.evaluate();
   }
 
   private report(candidate: Candidate, message: string): void {
@@ -137,6 +168,8 @@ export class ErrorRecovery {
     const observation = this.observation;
     if (this.assignment !== observation.assignmentVersion) {
       this.assignment = observation.assignmentVersion;
+      this.pausedAssignment = undefined;
+      this.processedReplies.clear();
       this.attempts.error = 0;
       this.attempts["missing-handoff"] = 0;
       this.cancel();
@@ -162,6 +195,7 @@ export class ErrorRecovery {
     )
       this.cancel();
     if (candidate?.category === "missing-handoff") {
+      this.pauseForAction(candidate);
       void this.inspectHandoff(candidate);
       return;
     }
@@ -176,11 +210,6 @@ export class ErrorRecovery {
       !this.stopped &&
       version === observation.version &&
       thread === observation.thread;
-    const actionRequired = this.actionRequired();
-    if (actionRequired) {
-      this.report(candidate, "ACTION REQUIRED!!!");
-      this.cancel();
-    }
     try {
       const present = await expectedFileExists(
         resolve(this.cwd, candidate.assignment.expectedFile),
@@ -189,12 +218,12 @@ export class ErrorRecovery {
       if (!current()) return;
       if (present) {
         this.attempts["missing-handoff"] = 0;
-        if (!actionRequired && this.reported?.startsWith("missing-handoff:"))
+        if (this.reported?.startsWith("missing-handoff:"))
           this.reported = undefined;
         this.cancel();
         return;
       }
-      if (!actionRequired) this.consider(candidate);
+      this.consider(candidate);
     } catch (error) {
       candidate.log.error("recovery check failed", error);
       if (!current()) return;
@@ -204,6 +233,7 @@ export class ErrorRecovery {
   }
 
   private consider(candidate: Candidate): void {
+    if (this.pausedAssignment !== undefined) return;
     if (this.attempts[candidate.category] >= this.options.retryLimit) {
       const { category } = candidate;
       this.report(
@@ -290,7 +320,7 @@ export class ErrorRecovery {
       candidate?.assignment !== pending.assignment ||
       candidate.turn !== pending.turn ||
       candidate.category !== pending.category ||
-      (pending.category === "missing-handoff" && this.actionRequired()) ||
+      this.pausedAssignment !== undefined ||
       (pending.category === "error" &&
         excludedError(this.observation.thread?.turns.at(-1)?.error) !==
           undefined)

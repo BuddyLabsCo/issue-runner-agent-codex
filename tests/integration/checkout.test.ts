@@ -53,7 +53,7 @@ for (const checkout of ["ordinary", "linked"] as const) {
     const instance = await createEnhancement(
       boundCapabilities().io,
       boundCapabilities().requestRecovery,
-      { cwd, env: {} },
+      { enhancementPause: boundCapabilities().enhancementPause, cwd, env: {} },
       {},
     );
     try {

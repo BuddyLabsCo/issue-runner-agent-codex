@@ -84,11 +84,9 @@ await test("turn start, changed assignment, active status, file appearance, huma
       assert.equal(bound.recoveries, 0);
       assert.deepEqual(
         stderr,
-        trigger === "action"
-          ? ["[codex] sessionref=known ACTION REQUIRED!!!\n"]
-          : trigger === "disconnect"
-            ? ["[codex] sessionref=known observation disconnected\n"]
-            : [],
+        trigger === "disconnect"
+          ? ["[codex] sessionref=known observation disconnected\n"]
+          : [],
       );
       if (trigger === "stop" || trigger === "disconnect") return;
       files.clear();
@@ -104,6 +102,13 @@ await test("turn start, changed assignment, active status, file appearance, huma
         status: { type: "idle" },
       });
       await flush();
+      if (trigger === "action") {
+        t.mock.timers.tick(20_000);
+        await flush();
+        assert.equal(bound.recoveries, 0);
+        await instance.enhancementResume("assignment-1");
+        await flush();
+      }
       t.mock.timers.tick(1_999);
       await flush();
       assert.equal(bound.recoveries, 0);
