@@ -49,6 +49,7 @@ export class ErrorRecovery {
   private readonly cwd: string;
   private readonly attempts = { error: 0, "missing-handoff": 0 };
   private assignment = 0;
+  private checkVersion = 0;
   private pausedAssignment: string | undefined;
   private readonly processedReplies = new Set<string>();
   private readonly turnAssignments = new Map<string, number>();
@@ -114,6 +115,7 @@ export class ErrorRecovery {
   }
 
   private cancel(): void {
+    this.checkVersion++;
     clearTimeout(this.pending?.timer);
     this.pending?.wait?.("cancelled");
     this.pending = undefined;
@@ -155,6 +157,7 @@ export class ErrorRecovery {
     )
       return;
     this.pausedAssignment = undefined;
+    this.cancel();
     this.evaluate();
   }
 
@@ -215,9 +218,11 @@ export class ErrorRecovery {
   private async inspectHandoff(candidate: Candidate): Promise<void> {
     const observation = this.observation;
     const version = observation.version;
+    const checkVersion = this.checkVersion;
     const thread = observation.thread;
     const current = () =>
       !this.stopped &&
+      checkVersion === this.checkVersion &&
       version === observation.version &&
       thread === observation.thread;
     try {
