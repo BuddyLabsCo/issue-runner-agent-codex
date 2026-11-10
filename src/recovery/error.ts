@@ -51,6 +51,7 @@ export class ErrorRecovery {
   private assignment = 0;
   private pausedAssignment: string | undefined;
   private readonly processedReplies = new Set<string>();
+  private readonly turnAssignments = new Map<string, number>();
   private pending: Pending | undefined;
   private submission: Promise<void> | undefined;
   private failure: { error: unknown } | undefined;
@@ -129,6 +130,7 @@ export class ErrorRecovery {
       .at(-1);
     if (
       !turn ||
+      this.turnAssignments.get(turn.id) !== this.assignment ||
       typeof reply?.text !== "string" ||
       !reply.text.trimStart().startsWith("[action required]")
     )
@@ -163,9 +165,17 @@ export class ErrorRecovery {
     diagnostic(this.observation.sessionref, message);
   }
 
+  private observeTurns(): void {
+    // Attribute existing turns before replacing the recovery context.
+    for (const turn of this.observation.thread?.turns ?? [])
+      if (!this.turnAssignments.has(turn.id))
+        this.turnAssignments.set(turn.id, this.assignment);
+  }
+
   private evaluate(): void {
     if (this.stopped) return;
     const observation = this.observation;
+    this.observeTurns();
     if (this.assignment !== observation.assignmentVersion) {
       this.assignment = observation.assignmentVersion;
       this.pausedAssignment = undefined;
