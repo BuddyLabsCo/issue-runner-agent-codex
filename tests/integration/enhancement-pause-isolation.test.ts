@@ -1,12 +1,66 @@
 import assert from "node:assert/strict";
+import fs from "node:fs/promises";
 import { test } from "node:test";
 import { createEnhancement } from "../../src/index.ts";
 import {
   boundCapabilities,
   completeShellTurn,
   flush,
+  nativeFixture,
+  thread,
 } from "../fixtures/native.ts";
 import { recoveryFixture } from "../fixtures/recovery.ts";
+
+await test("initial Assignment takes over a running turn and pauses on its final action request", async (t) => {
+  const native = await nativeFixture(t);
+  const bound = boundCapabilities();
+  const snapshot = thread();
+  snapshot.status.type = "active";
+  const turn = snapshot.turns[0]!;
+  turn.status = "inProgress";
+  native.handler = () => ({ thread: snapshot });
+  t.mock.method(fs, "access", () =>
+    Promise.reject(Object.assign(new Error("absent"), { code: "ENOENT" })),
+  );
+  const instance = await createEnhancement(
+    bound.io,
+    bound.requestRecovery,
+    { cwd: process.cwd(), env: {}, enhancementPause: bound.enhancementPause },
+    { handoffRecoveryDelaySeconds: 2, retryLimit: 1 },
+  );
+  t.after(() => instance.stop());
+  t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
+  await instance.startMonitoring("known");
+  await flush();
+  const assignment = { id: "assignment-1", expectedFile: "handoff.json" };
+  instance.onAssignment(assignment);
+  assert.deepEqual(bound.pauses, []);
+  turn.status = "completed";
+  turn.items = [
+    {
+      id: "business-reply",
+      type: "agentMessage",
+      phase: "final_answer",
+      text: "[action required] Decide",
+    },
+  ];
+  native.notify("turn/completed", { threadId: "known", turn });
+  native.notify("thread/status/changed", {
+    threadId: "known",
+    status: { type: "idle" },
+  });
+  await flush();
+  assert.deepEqual(bound.pauses, [
+    { assignmentId: "assignment-1", message: "ACTION REQUIRED!!!" },
+  ]);
+  instance.onAssignment(assignment);
+  native.notify("turn/completed", { threadId: "known", turn });
+  await flush();
+  t.mock.timers.tick(10_000);
+  await flush();
+  assert.equal(bound.pauses.length, 1);
+  assert.deepEqual(bound.recoveryIds, []);
+});
 
 await test("replacement clears the old pause without transferring its reply or accepting its resume", async (t) => {
   for (const path of ["same", "correction"]) {
@@ -104,7 +158,7 @@ await test("replacement clears the old pause without transferring its reply or a
   }
 });
 
-await test("a late marker from an observed old turn cannot pause replacement work", async (t) => {
+await test("replacement Assignment takes over a running turn and pauses on its final action request", async (t) => {
   const { instance, state, native, bound, expectedFile } =
     await recoveryFixture(t, { handoffRecoveryDelaySeconds: 2, retryLimit: 1 });
   const turn = state.snapshot.turns[0]!;
@@ -118,11 +172,17 @@ await test("a late marker from an observed old turn cannot pause replacement wor
   ];
   native.notify("turn/completed", { threadId: "known", turn });
   await flush();
-  assert.deepEqual(bound.pauses, []);
+  assert.deepEqual(bound.pauses, [
+    { assignmentId: "assignment-2", message: "ACTION REQUIRED!!!" },
+  ]);
   t.mock.timers.tick(2_000);
   await flush();
-  assert.deepEqual(bound.pauses, [], "a refreshed old turn remains old");
-  assert.deepEqual(bound.recoveryIds, ["assignment-2"]);
+  assert.equal(
+    bound.pauses.length,
+    1,
+    "the shared turn cannot repeat its pause",
+  );
+  assert.deepEqual(bound.recoveryIds, []);
 
   turn.id = "current-turn";
   native.notify("turn/completed", { threadId: "known", turn });
