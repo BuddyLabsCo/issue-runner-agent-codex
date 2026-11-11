@@ -4,6 +4,7 @@ import { createEnhancement } from "../../src/index.ts";
 import {
   boundCapabilities,
   completeShellTurn,
+  discoverShellSession,
   flush,
   nativeFixture,
 } from "../fixtures/native.ts";
@@ -11,6 +12,7 @@ import {
 await test("stop cancels a pending bootstrap wait and awaits issued input without accepting late events", async (t) => {
   const native = await nativeFixture(t);
   const bound = boundCapabilities();
+  discoverShellSession(native, bound.inputs);
   let release!: () => void;
   const input = new Promise<void>((resolve) => {
     release = resolve;
@@ -26,7 +28,7 @@ await test("stop cancels a pending bootstrap wait and awaits issued input withou
     { enhancementPause: bound.enhancementPause, cwd: process.cwd(), env: {} },
     {},
   );
-  await instance.startMonitoring("known");
+  await instance.startMonitoring();
   t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
   const waiting = assert.rejects(instance.waitUntilReady(), /stopped/);
   await flush();
@@ -65,6 +67,7 @@ await test("stop cancels a pending bootstrap wait and awaits issued input withou
 await test("overlapping readiness waits share one bootstrap and preserve the remaining wait's deadline", async (t) => {
   const native = await nativeFixture(t);
   const bound = boundCapabilities();
+  discoverShellSession(native, bound.inputs);
   const instance = await createEnhancement(
     bound.io,
     bound.requestRecovery,
@@ -72,7 +75,7 @@ await test("overlapping readiness waits share one bootstrap and preserve the rem
     { readyTimeout: 3 },
   );
   t.after(() => instance.stop());
-  await instance.startMonitoring("known");
+  await instance.startMonitoring();
   t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
   const timeout = assert.rejects(instance.waitUntilReady(), /timed out/);
   await flush();
@@ -104,6 +107,7 @@ await test("overlapping readiness waits share one bootstrap and preserve the rem
 await test("bootstrap input rejection propagates unchanged and the same instance can retry", async (t) => {
   const native = await nativeFixture(t);
   const bound = boundCapabilities();
+  discoverShellSession(native, bound.inputs);
   const failure = new Error("terminal input failed");
   let fails = true;
   const submit = bound.io.submitText.bind(bound.io);
@@ -127,7 +131,7 @@ await test("bootstrap input rejection propagates unchanged and the same instance
     {},
   );
   t.after(() => instance.stop());
-  await instance.startMonitoring("known");
+  await instance.startMonitoring();
   const waiting = assert.rejects(
     instance.waitUntilReady(),
     (error) => error === failure,
@@ -138,5 +142,52 @@ await test("bootstrap input rejection propagates unchanged and the same instance
   fails = false;
   assert.equal(await instance.waitUntilReady(), "known");
   assert.equal(bound.inputs.length, 3);
-  assert.notEqual(bound.inputs[1], bound.inputs[2]);
+  assert.equal(bound.inputs[1], bound.inputs[2]);
+});
+
+await test("ordinary model start cancels pending bootstrap after an already-issued probe settles", async (t) => {
+  const native = await nativeFixture(t);
+  const bound = boundCapabilities();
+  discoverShellSession(native, bound.inputs);
+  let release!: () => void;
+  const pending = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const submit = bound.io.submitText.bind(bound.io);
+  bound.io.submitText = async (text) => {
+    await submit(text);
+    await pending;
+  };
+  const instance = await createEnhancement(
+    bound.io,
+    bound.requestRecovery,
+    { enhancementPause: bound.enhancementPause, cwd: process.cwd(), env: {} },
+    {},
+  );
+  t.after(async () => {
+    release();
+    await instance.stop();
+  });
+  await instance.startMonitoring();
+  t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
+  const waiting = instance.waitUntilReady();
+  await flush();
+  await flush();
+  assert.equal(bound.inputs.length, 1);
+  native.notify("turn/started", {
+    threadId: "known",
+    turn: {
+      id: "ordinary",
+      status: "inProgress",
+      items: [
+        { type: "userMessage", content: [{ type: "text", text: "a0fc58" }] },
+      ],
+    },
+  });
+  assert.equal(await waiting, "known");
+  release();
+  await flush();
+  t.mock.timers.tick(30_000);
+  await flush();
+  assert.equal(bound.inputs.length, 1);
 });

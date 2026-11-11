@@ -37,6 +37,7 @@ function assemble(
     context.cwd,
   );
   let sessionid: string | undefined;
+  let resuming = false;
   let stopped = false;
   let stopping: Promise<void> | undefined;
   const active = () => {
@@ -61,6 +62,7 @@ function assemble(
         if (sessionref !== undefined) {
           if (!sessionref.trim())
             throw new TypeError("Codex sessionref must not be empty");
+          resuming = true;
           await log.run(() => observation.bind(sessionref));
         }
       } catch (error) {
@@ -74,7 +76,7 @@ function assemble(
       if (sessionid) return sessionid;
       const log = client.log.capture();
       try {
-        sessionid = await readiness.wait();
+        sessionid = await readiness.wait(resuming);
         return sessionid;
       } catch (error) {
         log.error("readiness failed", error);

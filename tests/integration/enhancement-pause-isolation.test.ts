@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { createEnhancement } from "../../src/index.ts";
 import {
-  bootstrapCapabilities,
+  boundCapabilities,
   completeShellTurn,
   flush,
 } from "../fixtures/native.ts";
@@ -149,7 +149,7 @@ await test("a new Run resumes the session and unfinished work without restoring 
   assert.equal(bound.pauses.length, 1);
   await instance.stop();
 
-  const next = bootstrapCapabilities(native);
+  const next = boundCapabilities();
   const resumed = await createEnhancement(
     next.io,
     next.requestRecovery,
@@ -162,8 +162,7 @@ await test("a new Run resumes the session and unfinished work without restoring 
   await flush();
   completeShellTurn(native, next.inputs[0]!.slice(1));
   assert.equal(await waiting, "known");
-  assert.equal(next.inputs.length, 2);
-  assert.match(next.inputs[1]!, /Reply exactly READY/);
+  assert.equal(next.inputs.length, 1);
   assert.deepEqual(next.pauses, []);
   resumed.onAssignment({ id: "assignment-1", expectedFile });
   native.notify("turn/completed", { threadId: "known", turn });

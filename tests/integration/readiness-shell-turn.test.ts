@@ -9,9 +9,28 @@ import {
   thread,
 } from "../fixtures/native.ts";
 
-await test("bootstrap waits for the GUID shell turn to end, ignoring unrelated completions", async (t) => {
+await test("fresh bootstrap needs no completed-turn association for the UUID shell item", async (t) => {
   const native = await nativeFixture(t);
-  const bound = boundCapabilities();
+  const bound = bootstrapCapabilities(native, "found");
+  let reads = 0;
+  native.handler = (request) => {
+    if (request.method === "thread/loaded/list") return { data: ["found"] };
+    if (!bound.inputs[0]) return { thread: thread("found") };
+    const snapshot = thread(
+      "found",
+      ++reads === 1
+        ? [
+            {
+              type: "commandExecution",
+              source: "userShell",
+              command: bound.inputs[0]?.slice(1),
+            },
+          ]
+        : [],
+    );
+    snapshot.turns = reads === 1 ? snapshot.turns : [];
+    return { thread: snapshot };
+  };
   const instance = await createEnhancement(
     bound.io,
     bound.requestRecovery,
@@ -19,57 +38,9 @@ await test("bootstrap waits for the GUID shell turn to end, ignoring unrelated c
     {},
   );
   t.after(() => instance.stop());
-  await instance.startMonitoring("known");
-  const waiting = instance.waitUntilReady();
-  void waiting.catch(() => undefined);
-  await flush();
-  const marker = {
-    type: "commandExecution",
-    source: "userShell",
-    command: bound.inputs[0]!.slice(1),
-  };
-  native.notify("turn/started", {
-    threadId: "known",
-    turn: { id: "shell", status: "inProgress", items: [] },
-  });
-  native.notify("item/completed", {
-    threadId: "known",
-    turnId: "shell",
-    item: marker,
-  });
-  await flush();
-  assert.equal(bound.inputs.length, 1);
-  native.notify("turn/completed", {
-    threadId: "other",
-    turn: { id: "shell", status: "completed", items: [marker] },
-  });
-  native.notify("turn/completed", {
-    threadId: "known",
-    turn: { id: "unrelated", status: "completed", items: [] },
-  });
-  await flush();
-  assert.equal(bound.inputs.length, 1);
-  native.notify("turn/completed", {
-    threadId: "known",
-    turn: { id: "shell", status: "completed", items: [marker] },
-  });
-  await flush();
+  await instance.startMonitoring();
+  assert.equal(await instance.waitUntilReady(), "found");
   assert.equal(bound.inputs.length, 2);
-  assert.match(bound.inputs[1]!, /Reply exactly READY/);
-  native.notify("turn/started", {
-    threadId: "known",
-    turn: {
-      id: "bootstrap",
-      status: "inProgress",
-      items: [
-        {
-          type: "userMessage",
-          content: [{ type: "text", text: bound.inputs[1] }],
-        },
-      ],
-    },
-  });
-  assert.equal(await waiting, "known");
 });
 
 for (const status of ["completed", "failed", "interrupted", "inProgress"]) {
@@ -97,51 +68,38 @@ for (const status of ["completed", "failed", "interrupted", "inProgress"]) {
     t.after(() => instance.stop());
     await instance.startMonitoring();
     const waiting = instance.waitUntilReady();
-    if (status === "inProgress") {
-      await flush();
-      await flush();
-      assert.equal(bound.inputs.length, 1);
-      native.notify("turn/completed", {
-        threadId: "found",
-        turn: { id: "turn-1", status: "completed", items: [] },
-      });
-    }
     assert.equal(await waiting, "found");
     assert.equal(bound.inputs.length, 2);
   });
 }
 
-await test("waiting for a shell turn preserves the readiness deadline and ignores late completion", async (t) => {
+await test("a supplied shell-only session resumes without waiting for its turn to complete", async (t) => {
   const native = await nativeFixture(t);
   const bound = boundCapabilities();
   const instance = await createEnhancement(
     bound.io,
     bound.requestRecovery,
     { enhancementPause: bound.enhancementPause, cwd: process.cwd(), env: {} },
-    { readyTimeout: 3 },
+    {},
   );
   t.after(() => instance.stop());
   await instance.startMonitoring("known");
-  t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
-  const waiting = assert.rejects(instance.waitUntilReady(), /timed out/);
+  const waiting = instance.waitUntilReady();
   await flush();
-  const marker = {
-    type: "commandExecution",
-    source: "userShell",
-    command: bound.inputs[0]!.slice(1),
-  };
   native.notify("turn/started", {
     threadId: "known",
-    turn: { id: "shell", status: "inProgress", items: [marker] },
+    turn: {
+      id: "shell",
+      status: "inProgress",
+      items: [
+        {
+          type: "commandExecution",
+          source: "userShell",
+          command: bound.inputs[0]!.slice(1),
+        },
+      ],
+    },
   });
-  await flush();
-  assert.equal(bound.inputs.length, 1);
-  t.mock.timers.tick(3_000);
-  await waiting;
-  native.notify("turn/completed", {
-    threadId: "known",
-    turn: { id: "shell", status: "completed", items: [] },
-  });
-  await flush();
+  assert.equal(await waiting, "known");
   assert.equal(bound.inputs.length, 1);
 });

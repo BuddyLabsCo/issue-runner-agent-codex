@@ -87,6 +87,25 @@ export function thread(id = "known", items: unknown[] = []) {
   };
 }
 
+export function discoverShellSession(
+  native: Awaited<ReturnType<typeof nativeFixture>>,
+  inputs: readonly string[],
+  ref = "known",
+) {
+  native.handler = (request) =>
+    request.method === "thread/loaded/list"
+      ? { data: [ref] }
+      : {
+          thread: thread(ref, [
+            {
+              type: "commandExecution",
+              source: "userShell",
+              command: inputs[0]?.slice(1),
+            },
+          ]),
+        };
+}
+
 export function completeShellTurn(
   native: Pick<Awaited<ReturnType<typeof nativeFixture>>, "notify">,
   command: string,

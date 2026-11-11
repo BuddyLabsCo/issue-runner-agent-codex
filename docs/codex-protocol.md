@@ -17,7 +17,7 @@ The enhancement owns native communication through `src/codex/`; the terminal own
 | `hooks/list` | List current definitions for `cwds: [cwd]`, including hashes, trust, enabled state and inventory errors. |
 | `thread/loaded/list` | Enumerate loaded conversation IDs through `cursor`/`nextCursor` while discovering the GUID marker. |
 | `thread/resume` | Attach this observer to the exact `threadId` with `excludeTurns: true`, without settings overrides or business input. |
-| `thread/read` | Read the exact `threadId` with `includeTurns: true` for discovery, initial state and recovery/reconnect refreshes. |
+| `thread/read` | Read the exact `threadId` with `includeTurns: true` for discovery, readiness retries, initial state and recovery/reconnect refreshes. |
 
 The client sends the `initialized` notification after successful initialization. Incoming event notifications supply these facts:
 
@@ -25,9 +25,9 @@ The client sends the `initialized` notification after successful initialization.
 | --- | --- |
 | `thread/started` | Trigger another discovery scan before binding. |
 | `thread/status/changed` | Update the bound thread's active, idle or system-error status. |
-| `turn/started` | Track the latest turn and correlate the readiness prompt with its turn ID. |
+| `turn/started` | Track the latest turn and correlate model-start readiness evidence with its turn ID. |
 | `turn/completed` | Observe final turn state or trigger discovery before binding. |
-| `item/started`, `item/completed` | Observe `commandExecution` items with `source: "userShell"`, bootstrap `userMessage` evidence and complete `agentMessage` replies. |
+| `item/started`, `item/completed` | Observe `commandExecution` items with `source: "userShell"`, native `userMessage` evidence and complete `agentMessage` replies. |
 | `error` | Retain `willRetry` for the bound latest turn; suppress business recovery while native retry is active. |
 
 Requests use numeric IDs and bounded waits. Only `hooks/list`, `config/read`, `thread/read`, and `thread/loaded/list` retry timeouts or service errors: three attempts maximum, ten seconds per attempt, and one second between attempts. Retries use fresh IDs on the same connection; disconnect or stop cancels them. Successful-response validation failures and other methods never retry. Each failed attempt goes to the shared Codex log; intermediate retries add no terminal notice.
@@ -86,7 +86,9 @@ Hook writes preserve enabled flags and unrelated state. Persisted trust survives
 
 ### Conversation identification and readiness
 
-Readiness submits markers and the bootstrap prompt only through injected terminal I/O. A failed GUID shell command still proves identity through its native record. A supplied ref restricts discovery to that exact conversation.
+Readiness uses injected terminal I/O to submit this instance's UUID probe and, when needed, a fixed READY prompt. A native `commandExecution` with `source: "userShell"` containing the UUID validates identity, even when the shell command fails.
+
+A reference supplied to `startMonitoring(sessionref)` selects resume mode. After validating that exact session with the UUID, resume returns without READY or model activity. Discovery of a reference during fresh startup does not change its mode.
 
 ```mermaid
 sequenceDiagram
@@ -97,33 +99,41 @@ sequenceDiagram
         E->>N: thread/read (exact threadId, includeTurns)
         N-->>E: Current thread and history
     end
-    loop Until this instance's GUID is observed
-        Note over E: Submit !GUID<br/>through bound TerminalIO
-        N-->>E: item/started or item/completed (userShell)
+    loop Until this instance's UUID is observed
+        Note over E: Submit !UUID through TerminalIO
+        N-->>E: Native userShell command evidence
         opt No bound ref yet
             E->>N: thread/loaded/list (cursor when paging)
-            N-->>E: Loaded IDs and nextCursor
             E->>N: thread/read (candidate threadId, includeTurns)
-            N-->>E: History containing GUID command, or read failure
+            N-->>E: History containing UUID command, or read failure
         end
     end
     opt Newly identified ref
         E->>N: thread/resume (matching threadId, excludeTurns)
         E->>N: thread/read (matching threadId, includeTurns)
-        N-->>E: Current thread and history
+        N-->>E: Current history, reread if superseded during binding
     end
-    opt GUID shell turn still running
-        N-->>E: turn/completed for the GUID shell turn
+    alt Resume
+        Note over E: Return exact ref after UUID validation
+    else Fresh start
+        Note over E: Check native history and live model-start evidence
+        opt No qualifying model turn yet
+            Note over E: Finish issued UUID input, then submit fixed READY through TerminalIO
+            N-->>E: turn/started and userMessage associated with that turn
+        end
+        Note over E: Return exact ref before answer or completion
     end
-    Note over E: Finish issued GUID input<br/>Submit unique READY prompt<br/>through TerminalIO
-    N-->>E: turn/started (bound threadId, turn ID)
-    N-->>E: Matching userMessage in turn or item notification
-    Note over E: Correlate both pieces<br/>Return exact ref before answer
 ```
 
-GUID rounds repeat after two seconds while previous input has settled. Once the GUID is observed, readiness stops marker rounds and waits for its shell turn to end before submitting the READY prompt. Command item completion alone does not end the turn. An ended GUID turn in history also permits bootstrap without waiting for another completion notification.
+Fresh readiness requires a native model turn in the verified session. A history turn containing a native `userMessage` qualifies. Live evidence requires `turn/started` and a `userMessage` associated with the same turn ID. Ordinary input, including anomalous input received before binding, qualifies regardless of its text. UUID shell activity, displayed shell-result text and foreign-session activity do not qualify.
 
-Candidate history RPC failures allow other candidates and later scans; malformed required data rejects readiness. Each wait has its own deadline. Retry retains the instance's GUID, discovered ref and observation without replaying the Agent command. Model-start evidence lets settings persist before Core saves the ref; it does not repair settings lost by an older GUID-only session.
+When this evidence is absent, readiness submits `Reply exactly READY. Do not use tools, modify files, or perform other work.` through terminal I/O. The prompt has no random token; success does not require matching its text. Bootstrap waits for issued terminal input to settle, without requiring a completed UUID shell turn in history. Readiness never waits for a model answer or interrupts an active turn.
+
+UUID rounds repeat after two seconds while previous input has settled, stopping once identity is verified. Success cancels startup input that has not been issued. Already-issued input keeps its terminal queue slot until it settles, preserving ordering with formal task input.
+
+Candidate history RPC failures allow other candidates and later scans; malformed required data rejects readiness. Each wait has its own deadline. Enter retry retains the UUID, discovered reference and model-start evidence, then refreshes bound history before considering another READY. Activity during Operator Pause or an earlier readiness attempt can satisfy the same startup without another bootstrap or Agent launch.
+
+For fresh sessions, model-start evidence meets the persistence threshold established by the native experiment in issue #29. The resume rule above replaces that issue's bootstrap requirement for supplied references, including legacy UUID-only sessions. Resume does not repair settings already lost in those sessions; the experiment did not establish preservation of a non-default model.
 
 ### State observation and reconnection
 
