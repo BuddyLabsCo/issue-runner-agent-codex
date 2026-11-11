@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { createEnhancement } from "../../src/index.ts";
+import { Observation } from "../../src/monitor/state.ts";
 import {
   boundCapabilities,
   completeShellTurn,
@@ -265,6 +266,62 @@ await test("stop cancels bootstrap input queued after GUID detection", async (t)
     { enhancementPause: bound.enhancementPause, cwd: process.cwd(), env: {} },
     {},
   );
+  t.after(() => instance.stop());
+  let reached!: () => void;
+  const queued = new Promise<void>((resolve) => {
+    reached = resolve;
+  });
+  let stopping: Promise<void> | undefined;
+  let initialized = false;
+  let inputsAtBarrier = 0;
+  // eslint-disable-next-line @typescript-eslint/unbound-method -- The wrapper restores the receiver with apply.
+  const bind = Observation.prototype.bind;
+  t.mock.method(
+    Observation.prototype,
+    "bind",
+    function (this: Observation, ...args: Parameters<Observation["bind"]>) {
+      const afterReadiness = () => {
+        if (!this.initialized) return;
+        this.changes.delete(afterReadiness);
+        initialized = this.initialized;
+        inputsAtBarrier = bound.inputs.length;
+        // Readiness's earlier listener has queued bootstrap; its microtask has not run.
+        stopping = instance.stop();
+        reached();
+      };
+      this.changes.add(afterReadiness);
+      return bind.apply(this, args);
+    },
+  );
+  await instance.startMonitoring();
+  const waiting = assert.rejects(instance.waitUntilReady(), /stopped/);
+  await queued;
+  assert.equal(initialized, true);
+  assert.equal(inputsAtBarrier, 1);
+  assert.deepEqual(
+    native.requests
+      .filter(({ method }) => method.startsWith("thread/"))
+      .map(({ method }) => method),
+    ["thread/loaded/list", "thread/read", "thread/resume", "thread/read"],
+  );
+  assert.ok(stopping);
+  await stopping;
+  await waiting;
+  await flush();
+  assert.equal(bound.inputs.length, 1);
+  await assert.rejects(instance.waitUntilReady(), /stopped/);
+});
+
+await test("stop before discovery completes prevents bootstrap input", async (t) => {
+  const native = await nativeFixture(t);
+  const bound = boundCapabilities();
+  discoverShellSession(native, bound.inputs);
+  const instance = await createEnhancement(
+    bound.io,
+    bound.requestRecovery,
+    { enhancementPause: bound.enhancementPause, cwd: process.cwd(), env: {} },
+    {},
+  );
   await instance.startMonitoring();
   const waiting = assert.rejects(instance.waitUntilReady(), /stopped/);
   await Promise.resolve();
@@ -273,6 +330,11 @@ await test("stop cancels bootstrap input queued after GUID detection", async (t)
   await waiting;
   await flush();
   assert.equal(bound.inputs.length, 1);
+  assert.ok(
+    native.requests.every(
+      ({ method }) => !["thread/read", "thread/resume"].includes(method),
+    ),
+  );
   await assert.rejects(instance.waitUntilReady(), /stopped/);
 });
 
