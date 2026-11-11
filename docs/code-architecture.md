@@ -12,7 +12,7 @@ Use this map to place enhancement code and tests. Interface behavior belongs in 
 |   |-- config.ts              # Enhancement option validation and defaults
 |   |-- diagnostics.ts         # Redacted notices on inherited Runner stderr
 |   |-- preflight/             # Effective checkout and hook trust before startup
-|   |-- session/               # GUID identification and verified model-start readiness
+|   |-- session/               # UUID identification and fresh/resume readiness
 |   |-- monitor/               # Bound conversation, Assignment, state and reconnection
 |   |-- recovery/              # Recovery eligibility, budgets, waits and cancellation
 |   `-- codex/                 # Native protocol, Git discovery and portable file I/O
@@ -38,7 +38,7 @@ Keep policy with the feature that owns it; keep native I/O behind `codex/`.
 | `enhancement.ts` | Validate configuration, connect, await preflight, assemble per-Tab instances, and expose the five lifecycle methods. Coordinate immediate cancellation and retryable resource cleanup. |
 | `config.ts` | Validate shared enhancement options and apply defaults. Configuration-field explanations live in Core's template comments. |
 | `preflight/` | Establish and verify primary checkout trust, replacing an explicit `untrusted` value when necessary. Preserve separate distrust overrides for the task cwd or Worktree, disabled hooks, unrelated settings and persisted writes. Trust current hook hashes and verify readback. |
-| `session/` | Submit GUID markers through bound I/O, identify the enclosing native conversation, and correlate the bootstrap prompt with its model turn start. Own readiness deadlines and retry evidence. |
+| `session/` | Submit UUID probes through bound I/O and validate the exact native conversation. Resume after identity validation; fresh startup requires native model-start evidence from history or live events, using a fixed READY prompt only when needed. Own readiness deadlines and retry history reconciliation. |
 | `monitor/` | Bind one exact native ref, retain Assignment ID and expected file together, filter notifications, refresh snapshots and reconnect. Invalidate stale asynchronous observations on replacement, new turns, disconnect and stop. |
 | `recovery/` | Decide eligibility from current facts, complete final replies and file presence. Own Assignment Enhancement Pause, processed reply identity, matching resume, separate budgets, delays, cancellation and originating-Assignment rechecks before calling `requestRecovery(id)`. |
 | `codex/` | Start/connect to the shared daemon, implement framed WebSocket RPC over the owned proxy, configuration/hook operations, Git checkout discovery and file existence checks. Release only owned connections and proxies. |

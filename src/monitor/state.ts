@@ -189,8 +189,8 @@ export class Observation {
       if (this.stopped) return;
       if (!this.client.available)
         throw new Error("Codex observation unavailable");
-      // Reconnection must reconcile history superseded by live notifications.
-      if (this.reconnecting && version !== this.snapshotVersion) continue;
+      // Binding must reconcile history superseded by live notifications.
+      if (version !== this.snapshotVersion) continue;
       this.available = true;
       this.initialized = true;
       this.invalidate(false);

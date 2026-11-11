@@ -7,6 +7,7 @@ import {
   completeShellTurn,
   flush,
   nativeFixture,
+  thread,
 } from "../fixtures/native.ts";
 
 await test("observes only the supplied conversation and accepts a failed concatenated userShell marker", async (t) => {
@@ -87,6 +88,7 @@ await test("observes only the supplied conversation and accepts a failed concate
       "hooks/list",
       "thread/resume",
       "thread/read",
+      "thread/read",
     ],
   );
   await instance.stop();
@@ -140,25 +142,29 @@ await test("each wait has a deadline and retries on the same instance use its GU
   assert.equal(await instance.waitUntilReady(), "known");
   t.mock.timers.tick(20_000);
   await flush();
-  assert.equal(bound.inputs.length, 5);
+  assert.equal(bound.inputs.length, 4);
   assert.equal(
     native.requests.filter(({ method }) => method === "thread/read").length,
-    1,
+    3,
   );
   await instance.stop();
 });
 
-await test("readiness finishes an issued input round before returning, including after a timed-out wait", async (t) => {
+await test("resume returns before issued probe input settles while formal input retains queue order", async (t) => {
   const native = await nativeFixture(t);
-  const bound = bootstrapCapabilities(native);
+  const bound = boundCapabilities();
   let complete!: () => void;
   const inputRound = new Promise<void>((resolve) => {
     complete = resolve;
   });
   const submit = bound.io.submitText.bind(bound.io);
-  bound.io.submitText = async (text) => {
-    await submit(text);
-    await inputRound;
+  let queue = Promise.resolve();
+  bound.io.submitText = (text) => {
+    queue = queue.then(async () => {
+      await submit(text);
+      if (text.startsWith("!")) await inputRound;
+    });
+    return queue;
   };
   const instance = await createEnhancement(
     bound.io,
@@ -166,6 +172,10 @@ await test("readiness finishes an issued input round before returning, including
     { enhancementPause: bound.enhancementPause, cwd: process.cwd(), env: {} },
     { readyTimeout: 3 },
   );
+  t.after(async () => {
+    complete();
+    await instance.stop();
+  });
   await instance.startMonitoring("known");
   t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
   const timeout = assert.rejects(instance.waitUntilReady(), /timed out/);
@@ -173,17 +183,14 @@ await test("readiness finishes an issued input round before returning, including
   t.mock.timers.tick(3_000);
   await timeout;
   const ready = instance.waitUntilReady();
-  let resolved = false;
-  void ready.then(() => {
-    resolved = true;
-  });
   completeShellTurn(native, bound.inputs[0]!.slice(1));
+  assert.equal(await ready, "known");
+  const business = bound.io.submitText("formal task");
   await flush();
-  assert.equal(resolved, false);
   assert.equal(bound.inputs.length, 1);
   complete();
-  assert.equal(await ready, "known");
-  await instance.stop();
+  await business;
+  assert.deepEqual(bound.inputs, [bound.inputs[0], "formal task"]);
 });
 
 await test("unbound instances never adopt notification-only evidence and stop invalidates readiness repeatably", async (t) => {
@@ -339,14 +346,16 @@ await test("assignment replacement and bound turn start invalidate pending snaps
   const native = await nativeFixture(t);
   for (const change of ["continuation", "replacement", "turn-start"] as const) {
     let release!: (value: unknown) => void;
+    let reads = 0;
     const received = new Promise<void>((received) => {
-      native.handler = (request) =>
-        request.method === "thread/read"
-          ? new Promise((resolve) => {
-              release = resolve;
-              received();
-            })
-          : {};
+      native.handler = (request) => {
+        if (request.method !== "thread/read") return {};
+        if (++reads > 1) return { thread: thread("known") };
+        return new Promise((resolve) => {
+          release = resolve;
+          received();
+        });
+      };
     });
     const bound = bootstrapCapabilities(native);
     const instance = await createEnhancement(

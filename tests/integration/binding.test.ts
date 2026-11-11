@@ -46,26 +46,6 @@ for (const status of ["completed", "inProgress"]) {
       await flush();
       await flush();
       assert.equal(reads, 2);
-      if (status === "inProgress") {
-        assert.equal(bound.inputs.length, 1);
-        native.notify("item/completed", {
-          threadId: "found",
-          turnId: "turn-1",
-          item: {
-            type: "commandExecution",
-            source: "userShell",
-            command: bound.inputs[0]!.slice(1),
-            status: "completed",
-          },
-        });
-        await flush();
-        assert.equal(bound.inputs.length, 1);
-        native.notify("turn/completed", {
-          threadId: "found",
-          turn: { id: "turn-1", status: "completed", items: [] },
-        });
-        await flush();
-      }
       assert.equal(bound.inputs.length, 2);
       assert.equal(await waiting, "found");
       assert.equal(reads, 2);
@@ -238,4 +218,54 @@ await test("same-ref monitoring calls wait for the pending subscription and init
   } finally {
     await instance.stop();
   }
+});
+
+await test("binding rereads history superseded by a model start before sending any bootstrap", async (t) => {
+  const native = await nativeFixture(t);
+  const bound = boundCapabilities();
+  let reads = 0;
+  native.handler = async (request) => {
+    if (request.method === "thread/loaded/list") return { data: ["fresh"] };
+    if (request.method !== "thread/read") return {};
+    const snapshot = thread("fresh", [
+      {
+        type: "commandExecution",
+        source: "userShell",
+        command: bound.inputs[0]?.slice(1),
+      },
+    ]);
+    if (!bound.inputs[0]) return { thread: snapshot };
+    if (++reads >= 2) {
+      snapshot.turns.push({
+        id: "ordinary",
+        status: "inProgress",
+        error: null,
+        items: [
+          { type: "userMessage", content: [{ type: "text", text: "a0fc58" }] },
+        ],
+      });
+    }
+    if (reads === 2) {
+      native.notify("turn/started", {
+        threadId: "fresh",
+        turn: { id: "ordinary", status: "inProgress", items: [] },
+      });
+      await flush();
+    }
+    return { thread: snapshot };
+  };
+  const instance = await createEnhancement(
+    bound.io,
+    bound.requestRecovery,
+    { enhancementPause: bound.enhancementPause, cwd: process.cwd(), env: {} },
+    {},
+  );
+  t.after(() => instance.stop());
+  await instance.startMonitoring();
+  const waiting = instance.waitUntilReady();
+  void waiting.catch(() => undefined);
+  await flush();
+  await flush();
+  assert.equal(bound.inputs.length, 1);
+  assert.equal(await waiting, "fresh");
 });

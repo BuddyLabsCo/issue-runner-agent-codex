@@ -4,6 +4,7 @@ import { createEnhancement } from "../../src/index.ts";
 import {
   boundCapabilities,
   completeShellTurn,
+  discoverShellSession,
   flush,
   nativeFixture,
   thread,
@@ -41,7 +42,10 @@ await test("fresh discovery starts a bootstrap model turn before returning the e
   await flush();
   assert.equal(ready, false);
   assert.equal(bound.inputs.length, 2);
-  assert.match(bound.inputs[1]!, /Reply exactly READY/);
+  assert.equal(
+    bound.inputs[1],
+    "Reply exactly READY. Do not use tools, modify files, or perform other work.",
+  );
   native.notify("turn/started", {
     threadId: "fresh",
     turn: {
@@ -60,49 +64,7 @@ await test("fresh discovery starts a bootstrap model turn before returning the e
   assert.ok(native.requests.every(({ method }) => method !== "turn/interrupt"));
 });
 
-await test("a supplied GUID-only ref correlates an early start and later user input during submission", async (t) => {
-  const native = await nativeFixture(t);
-  const bound = boundCapabilities();
-  let release!: () => void;
-  const pendingInput = new Promise<void>((resolve) => {
-    release = resolve;
-  });
-  const submit = bound.io.submitText.bind(bound.io);
-  bound.io.submitText = async (text) => {
-    await submit(text);
-    if (text.startsWith("!")) return;
-    native.notify("turn/started", {
-      threadId: "known",
-      turn: { id: "bootstrap", status: "inProgress", items: [] },
-    });
-    native.notify("item/started", {
-      threadId: "known",
-      turnId: "bootstrap",
-      item: { type: "userMessage", content: [{ type: "text", text }] },
-    });
-    await pendingInput;
-  };
-  const instance = await createEnhancement(
-    bound.io,
-    bound.requestRecovery,
-    { enhancementPause: bound.enhancementPause, cwd: process.cwd(), env: {} },
-    {},
-  );
-  t.after(async () => {
-    release();
-    await instance.stop();
-  });
-  await instance.startMonitoring("known");
-  const waiting = instance.waitUntilReady();
-  await flush();
-  completeShellTurn(native, bound.inputs[0]!.slice(1));
-  assert.equal(await waiting, "known");
-  assert.equal(bound.inputs.length, 2);
-  assert.equal(await instance.waitUntilReady(), "known");
-  assert.equal(bound.recoveries, 0);
-});
-
-await test("shell turns, stale starts and unrelated sessions or turn IDs cannot satisfy bootstrap", async (t) => {
+await test("resume validates its UUID during an active ordinary turn without bootstrap", async (t) => {
   const native = await nativeFixture(t);
   const bound = boundCapabilities();
   const instance = await createEnhancement(
@@ -113,21 +75,55 @@ await test("shell turns, stale starts and unrelated sessions or turn IDs cannot 
   );
   t.after(() => instance.stop());
   await instance.startMonitoring("known");
+  const waiting = instance.waitUntilReady();
+  await flush();
+  native.notify("turn/started", {
+    threadId: "known",
+    turn: {
+      id: "ordinary",
+      status: "inProgress",
+      items: [
+        { type: "userMessage", content: [{ type: "text", text: "a0fc58" }] },
+      ],
+    },
+  });
+  native.notify("item/completed", {
+    threadId: "known",
+    turnId: "shell",
+    item: {
+      type: "commandExecution",
+      source: "userShell",
+      command: bound.inputs[0]!.slice(1),
+    },
+  });
+  await flush();
+  assert.equal(bound.inputs.length, 1);
+  assert.equal(await waiting, "known");
+  assert.equal(await instance.waitUntilReady(), "known");
+  assert.equal(bound.recoveries, 0);
+});
+
+await test("shell activity, displayed text and foreign sessions or turn IDs cannot satisfy fresh readiness", async (t) => {
+  const native = await nativeFixture(t);
+  const bound = boundCapabilities();
+  discoverShellSession(native, bound.inputs);
+  const instance = await createEnhancement(
+    bound.io,
+    bound.requestRecovery,
+    { enhancementPause: bound.enhancementPause, cwd: process.cwd(), env: {} },
+    {},
+  );
+  t.after(() => instance.stop());
+  await instance.startMonitoring();
   let ready = false;
   const waiting = instance.waitUntilReady();
   void waiting.then(() => {
     ready = true;
   });
   await flush();
-  native.notify("turn/started", {
-    threadId: "known",
-    turn: { id: "shell", status: "inProgress", items: [] },
-  });
-  completeShellTurn(native, bound.inputs[0]!.slice(1));
-  await flush();
   const message = {
     type: "userMessage",
-    content: [{ type: "text", text: bound.inputs[1] }],
+    content: [{ type: "text", text: "a0fc58" }],
   };
   native.notify("turn/started", {
     threadId: "other",
@@ -136,12 +132,17 @@ await test("shell turns, stale starts and unrelated sessions or turn IDs cannot 
   native.notify("turn/started", {
     threadId: "known",
     turn: {
-      id: "stale",
+      id: "shell",
       status: "inProgress",
       items: [
         {
-          type: "userMessage",
-          content: [{ type: "text", text: "old prompt" }],
+          type: "commandExecution",
+          source: "userShell",
+          command: bound.inputs[0]!.slice(1),
+        },
+        {
+          type: "agentMessage",
+          text: "<user_shell_command>command not found</user_shell_command>",
         },
       ],
     },
@@ -150,6 +151,12 @@ await test("shell turns, stale starts and unrelated sessions or turn IDs cannot 
     threadId: "known",
     turnId: "message-without-start",
     item: message,
+  });
+  await flush();
+  assert.equal(ready, false);
+  native.notify("turn/started", {
+    threadId: "known",
+    turn: { id: "different-turn", status: "inProgress", items: [] },
   });
   await flush();
   assert.equal(ready, false);
@@ -164,6 +171,7 @@ for (const status of ["failed", "interrupted"]) {
   await test(`bootstrap ${status} after start does not fail readiness or recover without an Assignment`, async (t) => {
     const native = await nativeFixture(t);
     const bound = boundCapabilities();
+    discoverShellSession(native, bound.inputs);
     const instance = await createEnhancement(
       bound.io,
       bound.requestRecovery,
@@ -171,7 +179,7 @@ for (const status of ["failed", "interrupted"]) {
       { retryDelay: [0], handoffRecoveryDelaySeconds: 0 },
     );
     t.after(() => instance.stop());
-    await instance.startMonitoring("known");
+    await instance.startMonitoring();
     const waiting = instance.waitUntilReady();
     await flush();
     completeShellTurn(native, bound.inputs[0]!.slice(1));
@@ -208,9 +216,10 @@ for (const status of ["failed", "interrupted"]) {
   });
 }
 
-await test("missing model start times out, retries with a new token and rejects the old attempt's events", async (t) => {
+await test("retry accepts a model start from an earlier attempt using the same fixed bootstrap", async (t) => {
   const native = await nativeFixture(t);
   const bound = boundCapabilities();
+  discoverShellSession(native, bound.inputs);
   const instance = await createEnhancement(
     bound.io,
     bound.requestRecovery,
@@ -218,63 +227,214 @@ await test("missing model start times out, retries with a new token and rejects 
     { readyTimeout: 3 },
   );
   t.after(() => instance.stop());
-  await instance.startMonitoring("known");
+  await instance.startMonitoring();
   t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
   const timeout = assert.rejects(instance.waitUntilReady(), /timed out/);
   await flush();
-  completeShellTurn(native, bound.inputs[0]!.slice(1));
   await flush();
   assert.equal(bound.inputs.length, 2);
   t.mock.timers.tick(3_000);
   await timeout;
-  let ready = false;
   const retry = instance.waitUntilReady();
-  void retry.then(() => {
-    ready = true;
-  });
   await flush();
   assert.equal(bound.inputs.length, 3);
-  assert.notEqual(bound.inputs[1], bound.inputs[2]);
-  for (const [index, id] of [
-    [1, "old"],
-    [2, "retry"],
-  ] as const) {
-    native.notify("turn/started", {
-      threadId: "known",
-      turn: {
-        id,
-        status: "inProgress",
-        items: [
-          {
-            type: "userMessage",
-            content: [{ type: "text", text: bound.inputs[index] }],
-          },
-        ],
-      },
-    });
-    await flush();
-    assert.equal(ready, index === 2);
-  }
+  assert.equal(bound.inputs[1], bound.inputs[2]);
+  native.notify("turn/started", {
+    threadId: "known",
+    turn: {
+      id: "earlier-attempt",
+      status: "inProgress",
+      items: [
+        {
+          type: "userMessage",
+          content: [{ type: "text", text: bound.inputs[1] }],
+        },
+      ],
+    },
+  });
   assert.equal(await retry, "known");
 });
 
 await test("stop cancels bootstrap input queued after GUID detection", async (t) => {
   const native = await nativeFixture(t);
   const bound = boundCapabilities();
+  discoverShellSession(native, bound.inputs);
   const instance = await createEnhancement(
     bound.io,
     bound.requestRecovery,
     { enhancementPause: bound.enhancementPause, cwd: process.cwd(), env: {} },
     {},
   );
-  await instance.startMonitoring("known");
+  await instance.startMonitoring();
   const waiting = assert.rejects(instance.waitUntilReady(), /stopped/);
-  await flush();
-  completeShellTurn(native, bound.inputs[0]!.slice(1));
+  await Promise.resolve();
   const stopping = instance.stop();
   await stopping;
   await waiting;
   await flush();
   assert.equal(bound.inputs.length, 1);
   await assert.rejects(instance.waitUntilReady(), /stopped/);
+});
+
+await test("fresh readiness credits anomalous ordinary model input from before binding", async (t) => {
+  const native = await nativeFixture(t);
+  const bound = boundCapabilities();
+  native.handler = (request) => {
+    if (request.method === "thread/loaded/list") return { data: ["fresh"] };
+    const snapshot = thread("fresh", [
+      {
+        type: "commandExecution",
+        source: "userShell",
+        command: bound.inputs[0]?.slice(1),
+      },
+    ]);
+    snapshot.turns.push({
+      id: "ordinary",
+      status: "inProgress",
+      error: null,
+      items: [
+        { type: "userMessage", content: [{ type: "text", text: "a0fc58" }] },
+      ],
+    });
+    return { thread: snapshot };
+  };
+  const instance = await createEnhancement(
+    bound.io,
+    bound.requestRecovery,
+    { enhancementPause: bound.enhancementPause, cwd: process.cwd(), env: {} },
+    {},
+  );
+  t.after(() => instance.stop());
+  await instance.startMonitoring();
+  assert.equal(await instance.waitUntilReady(), "fresh");
+  assert.equal(bound.inputs.length, 1);
+});
+
+await test("retry refreshes bound history and credits ordinary input completed during Operator Pause", async (t) => {
+  const native = await nativeFixture(t);
+  const bound = boundCapabilities();
+  let progressed = false;
+  let notified = false;
+  native.handler = async (request) => {
+    if (request.method === "thread/loaded/list") return { data: ["fresh"] };
+    const snapshot = thread("fresh", [
+      {
+        type: "commandExecution",
+        source: "userShell",
+        command: bound.inputs[0]?.slice(1),
+      },
+    ]);
+    if (progressed)
+      snapshot.turns.push({
+        id: "ordinary-during-pause",
+        status: "completed",
+        error: null,
+        items: [
+          { type: "userMessage", content: [{ type: "text", text: "a0fc58" }] },
+        ],
+      });
+    if (progressed && !notified) {
+      notified = true;
+      native.notify("turn/started", {
+        threadId: "fresh",
+        turn: { id: "ordinary-during-pause", status: "inProgress", items: [] },
+      });
+      await flush();
+    }
+    return { thread: snapshot };
+  };
+  const instance = await createEnhancement(
+    bound.io,
+    bound.requestRecovery,
+    { enhancementPause: bound.enhancementPause, cwd: process.cwd(), env: {} },
+    { readyTimeout: 3 },
+  );
+  t.after(() => instance.stop());
+  await instance.startMonitoring();
+  t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
+  const timeout = assert.rejects(instance.waitUntilReady(), /timed out/);
+  await flush();
+  await flush();
+  assert.equal(bound.inputs.length, 2);
+  t.mock.timers.tick(3_000);
+  await timeout;
+  const reads = native.requests.filter(
+    ({ method }) => method === "thread/read",
+  ).length;
+  progressed = true;
+  assert.equal(await instance.waitUntilReady(), "fresh");
+  assert.ok(
+    native.requests.filter(({ method }) => method === "thread/read").length >
+      reads,
+  );
+  assert.equal(bound.inputs.length, 2);
+  assert.equal(
+    native.requests.filter(({ method }) => method === "thread/resume").length,
+    1,
+  );
+});
+
+await test("model notifications without a verified session cannot establish fresh readiness", async (t) => {
+  const native = await nativeFixture(t);
+  const bound = boundCapabilities();
+  let loaded = false;
+  native.handler = (request) =>
+    request.method === "thread/loaded/list"
+      ? { data: loaded ? ["fresh"] : [] }
+      : {
+          thread: thread("fresh", [
+            {
+              type: "commandExecution",
+              source: "userShell",
+              command: bound.inputs[0]?.slice(1),
+            },
+          ]),
+        };
+  const instance = await createEnhancement(
+    bound.io,
+    bound.requestRecovery,
+    { enhancementPause: bound.enhancementPause, cwd: process.cwd(), env: {} },
+    {},
+  );
+  t.after(() => instance.stop());
+  await instance.startMonitoring();
+  let ready = false;
+  const waiting = instance.waitUntilReady();
+  void waiting.then(
+    () => {
+      ready = true;
+    },
+    () => undefined,
+  );
+  await flush();
+  native.notify("turn/started", {
+    turn: {
+      id: "no-session",
+      status: "inProgress",
+      items: [
+        { type: "userMessage", content: [{ type: "text", text: "a0fc58" }] },
+      ],
+    },
+  });
+  await flush();
+  loaded = true;
+  native.notify("thread/started", { threadId: "fresh" });
+  await flush();
+  await flush();
+  assert.equal(ready, false);
+  assert.equal(bound.inputs.length, 2);
+  native.notify("turn/started", {
+    threadId: "fresh",
+    turn: {
+      id: "real-model",
+      status: "inProgress",
+      items: [
+        {
+          type: "userMessage",
+          content: [{ type: "text", text: "ordinary input" }],
+        },
+      ],
+    },
+  });
+  assert.equal(await waiting, "fresh");
 });

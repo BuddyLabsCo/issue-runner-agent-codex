@@ -1,5 +1,4 @@
 import type { Log, ScheduledLog } from "../codex/log.ts";
-import { randomUUID } from "node:crypto";
 import type { TerminalIO } from "issue-runner-core/terminal";
 import {
   Observation,
@@ -22,6 +21,17 @@ function containsMarker(
   );
 }
 
+function hasUserMessage(items: unknown[]): boolean {
+  return items.some((value) => {
+    const item = object(value);
+    return (
+      item.type === "userMessage" &&
+      Array.isArray(item.content) &&
+      item.content.length > 0
+    );
+  });
+}
+
 export class Readiness {
   private round: Promise<void> | undefined;
   private inputLog: Log | undefined;
@@ -29,14 +39,12 @@ export class Readiness {
   private discoveryFailure: { cause: unknown } | undefined;
   private readonly cancellations = new Set<() => void>();
   private nextRoundAt = 0;
-  private model:
-    | {
-        prompt: string;
-        starts: Set<string>;
-        messages: Set<string>;
-        started: boolean;
-      }
-    | undefined;
+  private bootstrapSubmitted = false;
+  private readonly model = {
+    starts: new Set<string>(),
+    messages: new Set<string>(),
+    started: false,
+  };
 
   private readonly io: TerminalIO;
   private readonly client: NativeClient;
@@ -58,19 +66,20 @@ export class Readiness {
     this.timeout = timeout;
   }
 
-  wait(): Promise<string> {
+  wait(resuming: boolean): Promise<string> {
     if (this.cancellations.size === 0) {
       this.discoveryFailure = undefined;
-      if (!this.model?.started) this.model = undefined;
+      this.bootstrapSubmitted = false;
       if (!this.round) this.nextRoundAt = 0;
     }
-    return this.run();
+    return this.run(resuming);
   }
 
-  private run(): Promise<string> {
+  private run(resuming: boolean): Promise<string> {
     return new Promise((resolve, reject) => {
       let settled = false;
       let detected = false;
+      let reconciling = this.observation.sessionref !== undefined;
       const log = this.client.log.capture();
       let retryWait: ScheduledLog | undefined;
       let deadlineWait: ScheduledLog | undefined;
@@ -100,37 +109,40 @@ export class Readiness {
           void this.discover().catch(finish);
           return;
         }
-        if (this.model?.started) {
-          finish();
-          return;
-        }
+        if (
+          this.observation.thread?.turns.some((turn) =>
+            hasUserMessage(turn.items),
+          )
+        )
+          this.model.started = true;
         if (containsMarker(this.observation.items, this.guid)) {
           detected = true;
           clearTimeout(next);
           retryWait?.("cancelled");
-          const shellCompleted = this.observation.thread?.turns.some(
-            (turn) =>
-              ["completed", "failed", "interrupted"].includes(turn.status) &&
-              containsMarker(turn.items, this.guid),
-          );
           if (
             this.observation.initialized &&
-            shellCompleted &&
+            (resuming || this.model.started)
+          ) {
+            finish();
+            return;
+          }
+          if (
+            this.observation.initialized &&
+            !reconciling &&
             !this.round &&
-            !this.model
+            !this.bootstrapSubmitted &&
+            !resuming
           ) {
             this.round = this.client.log
               .capture(this.client.log.current())
               .run(() =>
                 Promise.resolve().then(() => {
                   if (settled || this.cancellations.size === 0) return;
-                  this.model = {
-                    prompt: `Reply exactly READY. Do not use tools, modify files, or perform other work. Readiness token: ${randomUUID()}.`,
-                    starts: new Set(),
-                    messages: new Set(),
-                    started: false,
-                  };
-                  return this.submit(this.model.prompt, "readiness bootstrap");
+                  this.bootstrapSubmitted = true;
+                  return this.submit(
+                    "Reply exactly READY. Do not use tools, modify files, or perform other work.",
+                    "readiness bootstrap",
+                  );
                 }),
               );
             submit();
@@ -138,7 +150,10 @@ export class Readiness {
         }
       };
       const modelStarted = ({ method, params }: Notification) => {
-        if (!this.model || params.threadId !== this.observation.sessionref)
+        if (
+          !this.observation.sessionref ||
+          params.threadId !== this.observation.sessionref
+        )
           return;
         let turnId: unknown;
         let items: unknown[];
@@ -153,23 +168,8 @@ export class Readiness {
           items = [params.item];
         } else return;
         if (typeof turnId !== "string") return;
-        if (
-          items.some((value: unknown) => {
-            const item = object(value);
-            return (
-              item.type === "userMessage" &&
-              Array.isArray(item.content) &&
-              item.content.some((value: unknown) => {
-                const content = object(value);
-                return (
-                  content.type === "text" && content.text === this.model?.prompt
-                );
-              })
-            );
-          })
-        )
-          this.model.messages.add(turnId);
-        this.model.started =
+        if (hasUserMessage(items)) this.model.messages.add(turnId);
+        this.model.started ||=
           this.model.starts.has(turnId) && this.model.messages.has(turnId);
         changed();
       };
@@ -253,8 +253,25 @@ export class Readiness {
       this.cancellations.add(cancel);
       this.observation.changes.add(changed);
       this.client.notifications.add(modelStarted);
-      if (this.observation.sessionref)
-        void this.observation.bind(this.observation.sessionref).catch(finish);
+      if (this.observation.sessionref) {
+        const initialized = this.observation.initialized;
+        void this.observation
+          .bind(this.observation.sessionref)
+          .then(async () => {
+            if (settled) return;
+            if (initialized) {
+              let version: number;
+              do {
+                version = this.observation.version;
+                await this.observation.refresh();
+                if (settled) return;
+              } while (version !== this.observation.version);
+            }
+            reconciling = false;
+            changed();
+          })
+          .catch(finish);
+      }
       changed();
       if (!settled) submit();
     });
