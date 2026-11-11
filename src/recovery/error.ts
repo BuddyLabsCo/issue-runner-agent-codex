@@ -181,6 +181,9 @@ export class ErrorRecovery {
     this.observeTurns();
     if (this.assignment !== observation.assignmentVersion) {
       this.assignment = observation.assignmentVersion;
+      const turn = observation.thread?.turns.at(-1);
+      if (turn?.status === "inProgress")
+        this.turnAssignments.set(turn.id, this.assignment);
       this.pausedAssignment = undefined;
       this.processedReplies.clear();
       this.attempts.error = 0;
