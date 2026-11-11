@@ -1,8 +1,13 @@
 # Changelog
 
+## 1.0.6
+
+- - fix: [issue-74] transfer active turns to new Assignments (#75)
+
 ## 1.0.5
 
 - - fix: [issue-71] simplify session readiness and resume (#72)
+
 
 ## 1.0.4
 
@@ -11,15 +16,18 @@
 - - fix: [issue-64] persist Assignment Enhancement Pause until resume (#67)
 
 
+
 ## 1.0.3
 
 - - feat: [issue-57] share contextual rotating Codex logs (#61)
 
 
 
+
 ## 1.0.2
 
 - - fix: [issue-58] preserve history across metadata notifications (#59)
+
 
 
 
@@ -34,9 +42,11 @@
 
 
 
+
 ## 1.0.0
 
 - - docs: [issue-38] consolidate Codex enhancement documentation (#48)
+
 
 
 
@@ -53,9 +63,11 @@
 
 
 
+
 ## 0.1.1
 
 - - chore: [issue-42] update Core dependency to 0.1.1 (#43)
+
 
 
 
