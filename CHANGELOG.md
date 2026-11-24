@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.8
+
+- fix: [issue-82] use a neutral readiness bootstrap prompt (#83)
+
 ## 1.0.7
 
 - chore: update issue-runner-core to 1.0.10 (#81)
