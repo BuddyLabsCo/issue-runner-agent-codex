@@ -86,9 +86,9 @@ Hook writes preserve enabled flags and unrelated state. Persisted trust survives
 
 ### Conversation identification and readiness
 
-Readiness uses injected terminal I/O to submit this instance's UUID probe and, when needed, a fixed READY prompt. A native `commandExecution` with `source: "userShell"` containing the UUID validates identity, even when the shell command fails.
+Readiness uses injected terminal I/O to submit this instance's UUID probe and, when needed, a fixed bootstrap prompt. A native `commandExecution` with `source: "userShell"` containing the UUID validates identity, even when the shell command fails.
 
-A reference supplied to `startMonitoring(sessionref)` selects resume mode. After validating that exact session with the UUID, resume returns without READY or model activity. Discovery of a reference during fresh startup does not change its mode.
+A reference supplied to `startMonitoring(sessionref)` selects resume mode. After validating that exact session with the UUID, resume returns without a bootstrap prompt or model activity. Discovery of a reference during fresh startup does not change its mode.
 
 ```mermaid
 sequenceDiagram
@@ -118,7 +118,7 @@ sequenceDiagram
     else Fresh start
         Note over E: Check native history and live model-start evidence
         opt No qualifying model turn yet
-            Note over E: Finish issued UUID input, then submit fixed READY through TerminalIO
+            Note over E: Finish issued UUID input, then submit fixed bootstrap prompt through TerminalIO
             N-->>E: turn/started and userMessage associated with that turn
         end
         Note over E: Return exact ref before answer or completion
@@ -127,11 +127,11 @@ sequenceDiagram
 
 Fresh readiness requires a native model turn in the verified session. A history turn containing a native `userMessage` qualifies. Live evidence requires `turn/started` and a `userMessage` associated with the same turn ID. Ordinary input, including anomalous input received before binding, qualifies regardless of its text. UUID shell activity, displayed shell-result text and foreign-session activity do not qualify.
 
-When this evidence is absent, readiness submits `Reply exactly READY. Do not use tools, modify files, or perform other work.` through terminal I/O. The prompt has no random token; success does not require matching its text. Bootstrap waits for issued terminal input to settle, without requiring a completed UUID shell turn in history. Readiness never waits for a model answer or interrupts an active turn.
+When this evidence is absent, readiness submits `Task instructions coming up.` through terminal I/O. The prompt does not restrict the model's reply or actions, avoiding conflicting instructions if it is processed together with task input. The prompt has no random token; success does not require matching its text. Bootstrap waits for issued terminal input to settle, without requiring a completed UUID shell turn in history. Readiness never waits for a model answer or interrupts an active turn.
 
 UUID rounds repeat after two seconds while previous input has settled, stopping once identity is verified. Success cancels startup input that has not been issued. Already-issued input keeps its terminal queue slot until it settles, preserving ordering with formal task input.
 
-Candidate history RPC failures allow other candidates and later scans; malformed required data rejects readiness. Each wait has its own deadline. Enter retry retains the UUID, discovered reference and model-start evidence, then refreshes bound history before considering another READY. Activity during Operator Pause or an earlier readiness attempt can satisfy the same startup without another bootstrap or Agent launch.
+Candidate history RPC failures allow other candidates and later scans; malformed required data rejects readiness. Each wait has its own deadline. Enter retry retains the UUID, discovered reference and model-start evidence, then refreshes bound history before considering another bootstrap prompt. Activity during Operator Pause or an earlier readiness attempt can satisfy the same startup without another bootstrap or Agent launch.
 
 For fresh sessions, model-start evidence meets the persistence threshold established by the native experiment in issue #29. The resume rule above replaces that issue's bootstrap requirement for supplied references, including legacy UUID-only sessions. Resume does not repair settings already lost in those sessions; the experiment did not establish preservation of a non-default model.
 
