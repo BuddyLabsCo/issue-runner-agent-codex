@@ -140,7 +140,7 @@ export class Readiness {
                   if (settled || this.cancellations.size === 0) return;
                   this.bootstrapSubmitted = true;
                   return this.submit(
-                    "Reply exactly READY. Do not use tools, modify files, or perform other work.",
+                    "Task instructions coming up.",
                     "readiness bootstrap",
                   );
                 }),

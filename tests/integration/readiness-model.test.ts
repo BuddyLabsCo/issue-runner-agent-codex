@@ -43,10 +43,7 @@ await test("fresh discovery starts a bootstrap model turn before returning the e
   await flush();
   assert.equal(ready, false);
   assert.equal(bound.inputs.length, 2);
-  assert.equal(
-    bound.inputs[1],
-    "Reply exactly READY. Do not use tools, modify files, or perform other work.",
-  );
+  assert.equal(bound.inputs[1], "Task instructions coming up.");
   native.notify("turn/started", {
     threadId: "fresh",
     turn: {
