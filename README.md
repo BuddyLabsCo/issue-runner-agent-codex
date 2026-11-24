@@ -20,7 +20,7 @@ Core discovers `issue-runner-agent-codex` for roles whose Agent identifier is `c
 
 See [template comments](https://github.com/BuddyLabsCo/issue-runner-core/blob/main/templates/config.yaml) for supported configuration fields.
 
-Core 1.0.2 or newer must supply enhancement contract version 3.
+Core 1.0.10 or newer must supply enhancement contract version 3.
 
 ## Runtime notices and troubleshooting
 
@@ -57,6 +57,6 @@ npm run check                               # Formatting, lint, and types
 npm test                                    # Full suite, including package checks
 ```
 
-Development uses exact npm `issue-runner-core@1.0.2` through type-only imports. It needs no local Core archive or sibling checkout. Package tests install the built runtime without Core before checking declarations against development Core. Integration tests use injected capabilities and native protocol substitutes; they do not establish real terminal or model acceptance.
+Development uses exact npm `issue-runner-core@1.0.10` through type-only imports. It needs no local Core archive or sibling checkout. Package tests install the built runtime without Core before checking declarations against development Core. Integration tests use injected capabilities and native protocol substitutes; they do not establish real terminal or model acceptance.
 
 Read the [Core public integration contract](https://github.com/BuddyLabsCo/issue-runner-core/blob/main/docs/terminal-contract.md) for interfaces, [Codex protocol](https://github.com/BuddyLabsCo/issue-runner-agent-codex/blob/main/docs/codex-protocol.md) for native interactions, and [code architecture](https://github.com/BuddyLabsCo/issue-runner-agent-codex/blob/main/docs/code-architecture.md) for ownership and test placement. These repository links also work from the npm README. Publication after documentation cleanup remains the maintainer's decision.
