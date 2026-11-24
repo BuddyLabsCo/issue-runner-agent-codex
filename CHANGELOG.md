@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.7
+
+- chore: update issue-runner-core to 1.0.10 (#81)
+- fix: [issue-77] prevent changelog blank-line accumulation (#78)
+
 ## 1.0.6
 
 - - fix: [issue-74] transfer active turns to new Assignments (#75)
@@ -8,29 +13,19 @@
 
 - - fix: [issue-71] simplify session readiness and resume (#72)
 
-
 ## 1.0.4
 
 - - fix: [issue-66] preserve Enhancement Pause through recovery races (#70)
 - - fix: [issue-65] isolate Enhancement Pause across Assignments and Runs (#69)
 - - fix: [issue-64] persist Assignment Enhancement Pause until resume (#67)
 
-
-
 ## 1.0.3
 
 - - feat: [issue-57] share contextual rotating Codex logs (#61)
 
-
-
-
 ## 1.0.2
 
 - - fix: [issue-58] preserve history across metadata notifications (#59)
-
-
-
-
 
 ## 1.0.1
 
@@ -38,43 +33,17 @@
 - - fix: [issue-52] wait for GUID shell turn completion before bootstrap (#53)
 - - fix: [issue-50] contain enhancement failures and retain per-tab logs (#51)
 
-
-
-
-
-
 ## 1.0.0
 
 - - docs: [issue-38] consolidate Codex enhancement documentation (#48)
-
-
-
-
-
-
 
 ## 0.1.2
 
 - - fix: [issue-45] verify effective startup trust (#46)
 
-
-
-
-
-
-
-
 ## 0.1.1
 
 - - chore: [issue-42] update Core dependency to 0.1.1 (#43)
-
-
-
-
-
-
-
-
 
 ## 0.1.0
 
