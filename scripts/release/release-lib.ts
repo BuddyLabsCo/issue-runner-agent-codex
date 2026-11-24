@@ -233,7 +233,7 @@ export function readTextAt(ref: string | null, file: string): string | null {
 }
 
 // A release proposal owns one version section per proposed version; earlier
-// sections stay exactly as the merged history recorded them.
+// sections keep their entries and normalize to one blank line between sections.
 export function renderChangelog(
   existing: string | null,
   version: string,
@@ -251,7 +251,7 @@ export function renderChangelog(
           .slice(firstSection)
           .join("\n")
           .trimEnd()
-          .split(/\n(?=## )/);
+          .split(/\n+(?=## )/);
   const proposedSection = new RegExp(
     `^## ${version.replaceAll(".", "\\.")}(?:\\s|$)`,
   );
