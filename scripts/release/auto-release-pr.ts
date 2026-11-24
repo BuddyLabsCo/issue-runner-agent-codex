@@ -138,7 +138,7 @@ function releaseBody(
     "",
     "### Changelog",
     "",
-    entries.join("\n"),
+    entries.map((entry) => `- ${entry}`).join("\n"),
     "",
     "---",
     "",
@@ -204,7 +204,7 @@ function main(): void {
   const entries = git(
     "log",
     "--no-merges",
-    "--pretty=format:- %s",
+    "--pretty=format:%s",
     base === null ? "HEAD" : `${base}..HEAD`,
   )
     .split("\n")
